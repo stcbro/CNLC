@@ -141,151 +141,65 @@ namespace CNLC
 
         private static void BuildLoginForm()
         {
-            // 精致无边框：圆角 + 投影 + 蓝色渐变标题条，与状态窗风格统一
-            loginForm = new PopupForm();
-            loginForm.Size = new Size(330, 208);
+            loginForm = new Form();
             loginForm.Text = "校园内网登录器";
+            loginForm.ClientSize = new Size(320, 182);
+            loginForm.FormBorderStyle = FormBorderStyle.FixedSingle;
+            loginForm.StartPosition = FormStartPosition.CenterScreen;
+            loginForm.MaximizeBox = false;
+            loginForm.TopMost = true;
             try { loginForm.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+            try { loginForm.Font = new Font("Microsoft YaHei UI", 9.5F); } catch { }
+            loginForm.AutoScaleMode = AutoScaleMode.Dpi;
+            loginForm.AutoScaleDimensions = new SizeF(96F, 96F);
 
-            // 渐变标题条：程序图标 + 名称，右侧 × 关闭，按住可拖动窗口
-            Panel tp = new Panel();
-            tp.Dock = DockStyle.Top;
-            tp.Height = 44;
-            tp.Paint += delegate(object s, PaintEventArgs e)
-            {
-                using (LinearGradientBrush b = new LinearGradientBrush(
-                    tp.ClientRectangle,
-                    Color.FromArgb(41, 98, 255),
-                    Color.FromArgb(0, 145, 255),
-                    0f))
-                {
-                    e.Graphics.FillRectangle(b, tp.ClientRectangle);
-                }
-            };
-            PictureBox ico = new PictureBox();
-            try { ico.Image = new Icon(Application.ExecutablePath, 16, 16).ToBitmap(); } catch { }
-            ico.Location = new Point(16, 13);
-            ico.Size = new Size(18, 18);
-            ico.SizeMode = PictureBoxSizeMode.Zoom;
-            tp.Controls.Add(ico);
-
-            Label title = new Label();
-            title.Text = "校园内网登录器";
-            title.ForeColor = Color.White;
-            title.Font = new Font("Microsoft YaHei UI", 10.5F, FontStyle.Bold);
-            title.Location = new Point(42, 11);
-            title.AutoSize = true;
-            tp.Controls.Add(title);
-
-            Label closeBtn = new Label();
-            closeBtn.Text = "×";
-            closeBtn.ForeColor = Color.White;
-            closeBtn.Font = new Font("Microsoft YaHei UI", 13F, FontStyle.Bold);
-            closeBtn.Location = new Point(296, 4);
-            closeBtn.Size = new Size(28, 36);
-            closeBtn.AutoSize = false;
-            closeBtn.TextAlign = ContentAlignment.MiddleCenter;
-            closeBtn.Cursor = Cursors.Hand;
-            closeBtn.Click += delegate { loginForm.Close(); };
-            tp.Controls.Add(closeBtn);
-            loginForm.Controls.Add(tp);
-
-            // 按住标题条拖动窗口
-            bool dragging = false;
-            Point dragCursor = Point.Empty, dragForm = Point.Empty;
-            tp.MouseDown += delegate(object s, MouseEventArgs e)
-            {
-                if (e.Button == MouseButtons.Left) { dragging = true; dragCursor = Cursor.Position; dragForm = loginForm.Location; }
-            };
-            tp.MouseMove += delegate(object s, MouseEventArgs e)
-            {
-                if (dragging)
-                {
-                    Point d = Point.Subtract(Cursor.Position, (Size)dragCursor);
-                    loginForm.Location = Point.Add(dragForm, (Size)d);
-                }
-            };
-            tp.MouseUp += delegate(object s, MouseEventArgs e) { dragging = false; };
-            title.MouseDown += delegate(object s, MouseEventArgs e)
-            {
-                if (e.Button == MouseButtons.Left) { dragging = true; dragCursor = Cursor.Position; dragForm = loginForm.Location; }
-            };
-            title.MouseMove += delegate(object s, MouseEventArgs e)
-            {
-                if (dragging)
-                {
-                    Point d = Point.Subtract(Cursor.Position, (Size)dragCursor);
-                    loginForm.Location = Point.Add(dragForm, (Size)d);
-                }
-            };
-            title.MouseUp += delegate(object s, MouseEventArgs e) { dragging = false; };
-
-            // 左右分栏：左栏 = 灰色标签 + 输入框同行，右栏 = 渐变登录 / 描边注销
-            Label lblUser = NewLabel("工号", 24, 66);
+            // 左右分栏：左栏 = 标签+输入框（同一行），右栏 = 登录/注销上下排列
+            Label lblUser = NewLabel("工号:", 20, 34);
             lblUser.ForeColor = Color.FromArgb(138, 138, 138);
             txtUser = new TextBox();
-            txtUser.Location = new Point(70, 60);
-            txtUser.Size = new Size(160, 23);
-
-            Label lblPass = NewLabel("密码", 24, 106);
-            lblPass.ForeColor = Color.FromArgb(138, 138, 138);
-            txtPass = new TextBox();
-            txtPass.Location = new Point(70, 100);
-            txtPass.Size = new Size(160, 23);
-            txtPass.PasswordChar = '*';
+            txtUser.Location = new Point(62, 30);
+            txtUser.Size = new Size(145, 23);
 
             Button btnLogin = new Button();
             btnLogin.Text = "登 录";
-            btnLogin.Location = new Point(252, 59);
-            btnLogin.Size = new Size(54, 28);
-            btnLogin.FlatStyle = FlatStyle.Flat;
-            btnLogin.FlatAppearance.BorderSize = 0;
-            btnLogin.ForeColor = Color.White;
+            btnLogin.Location = new Point(225, 30);
+            btnLogin.Size = new Size(72, 26);
             btnLogin.Cursor = Cursors.Hand;
-            btnLogin.Paint += delegate(object s, PaintEventArgs e)
-            {
-                Rectangle r = btnLogin.ClientRectangle;
-                using (LinearGradientBrush b = new LinearGradientBrush(
-                    r, Color.FromArgb(41, 98, 255), Color.FromArgb(0, 145, 255), 0f))
-                {
-                    e.Graphics.FillRectangle(b, r);
-                }
-                TextRenderer.DrawText(e.Graphics, "登 录", btnLogin.Font, r, Color.White,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
-            };
+
+            Label lblPass = NewLabel("密码:", 20, 72);
+            lblPass.ForeColor = Color.FromArgb(138, 138, 138);
+            txtPass = new TextBox();
+            txtPass.Location = new Point(62, 68);
+            txtPass.Size = new Size(145, 23);
+            txtPass.PasswordChar = '*';
 
             Button btnLogout = new Button();
             btnLogout.Text = "注 销";
-            btnLogout.Location = new Point(252, 99);
-            btnLogout.Size = new Size(54, 28);
-            btnLogout.FlatStyle = FlatStyle.Flat;
-            btnLogout.FlatAppearance.BorderColor = Color.FromArgb(205, 205, 205);
-            btnLogout.FlatAppearance.BorderSize = 1;
-            btnLogout.ForeColor = Color.FromArgb(90, 90, 90);
-            btnLogout.BackColor = Color.White;
+            btnLogout.Location = new Point(225, 68);
+            btnLogout.Size = new Size(72, 26);
             btnLogout.Cursor = Cursors.Hand;
 
             chkRemember = new CheckBox();
             chkRemember.Text = "记住密码";
-            chkRemember.Location = new Point(24, 142);
+            chkRemember.Location = new Point(25, 120);
             chkRemember.AutoSize = true;
             chkRemember.ForeColor = Color.FromArgb(70, 70, 70);
 
             chkGuard = new CheckBox();
             chkGuard.Text = "断网自动重连";
-            chkGuard.Location = new Point(170, 142);
+            chkGuard.Location = new Point(165, 120);
             chkGuard.AutoSize = true;
             chkGuard.ForeColor = Color.FromArgb(70, 70, 70);
 
             chkAutoStart = new CheckBox();
             chkAutoStart.Text = "开机自启动";
-            chkAutoStart.Location = new Point(24, 168);
+            chkAutoStart.Location = new Point(25, 146);
             chkAutoStart.AutoSize = true;
             chkAutoStart.ForeColor = Color.FromArgb(70, 70, 70);
 
             chkAutoLogin = new CheckBox();
             chkAutoLogin.Text = "开机自登录";
-            chkAutoLogin.Location = new Point(170, 168);
+            chkAutoLogin.Location = new Point(165, 146);
             chkAutoLogin.AutoSize = true;
             chkAutoLogin.ForeColor = Color.FromArgb(70, 70, 70);
 
@@ -613,49 +527,6 @@ namespace CNLC
 
         // ================= 状态窗口 / Toast =================
 
-        // 精致无边框弹出窗：投影 + 圆角
-        private class PopupForm : Form
-        {
-            private const int CS_DROPSHADOW = 0x20000;
-            private readonly int radius = 12;
-
-            public PopupForm()
-            {
-                FormBorderStyle = FormBorderStyle.None;
-                StartPosition = FormStartPosition.CenterScreen;
-                ShowInTaskbar = false;
-                DoubleBuffered = true;
-                BackColor = Color.White;
-                TopMost = true;
-                try { Font = new Font("Microsoft YaHei UI", 9.5F); } catch { }
-            }
-
-            protected override CreateParams CreateParams
-            {
-                get
-                {
-                    CreateParams cp = base.CreateParams;
-                    cp.ClassStyle |= CS_DROPSHADOW;   // 系统级窗口投影
-                    return cp;
-                }
-            }
-
-            protected override void OnLoad(EventArgs e) { base.OnLoad(e); ApplyRadius(); }
-            protected override void OnResize(EventArgs e) { base.OnResize(e); ApplyRadius(); }
-
-            private void ApplyRadius()
-            {
-                int d = radius * 2;
-                GraphicsPath p = new GraphicsPath();
-                p.AddArc(0, 0, d, d, 180, 90);
-                p.AddArc(Width - d - 1, 0, d, d, 270, 90);
-                p.AddArc(Width - d - 1, Height - d - 1, d, d, 0, 90);
-                p.AddArc(0, Height - d - 1, d, d, 90, 90);
-                p.CloseFigure();
-                Region = new Region(p);
-            }
-        }
-
         private static void ShowStatus()
         {
             if (tray == null)
@@ -684,32 +555,16 @@ namespace CNLC
             }
             catch { }
 
-            statusForm = new PopupForm();
-            statusForm.Size = new Size(320, 196);
-
-            // 顶部蓝色渐变标题条
-            Panel tp = new Panel();
-            tp.Dock = DockStyle.Top;
-            tp.Height = 38;
-            tp.Paint += delegate(object s, PaintEventArgs e)
-            {
-                using (LinearGradientBrush b = new LinearGradientBrush(
-                    tp.ClientRectangle,
-                    Color.FromArgb(41, 98, 255),
-                    Color.FromArgb(0, 145, 255),
-                    0f))
-                {
-                    e.Graphics.FillRectangle(b, tp.ClientRectangle);
-                }
-            };
-            Label title = new Label();
-            title.Text = "运行状态";
-            title.ForeColor = Color.White;
-            title.Font = new Font("Microsoft YaHei UI", 11F, FontStyle.Bold);
-            title.Location = new Point(22, 6);
-            title.AutoSize = true;
-            tp.Controls.Add(title);
-            statusForm.Controls.Add(tp);
+            statusForm = new Form();
+            statusForm.Text = "运行状态";
+            statusForm.ClientSize = new Size(320, 200);
+            statusForm.FormBorderStyle = FormBorderStyle.FixedDialog;
+            statusForm.StartPosition = FormStartPosition.CenterScreen;
+            statusForm.MaximizeBox = false;
+            statusForm.TopMost = true;
+            try { statusForm.Font = new Font("Microsoft YaHei UI", 9.5F); } catch { }
+            statusForm.AutoScaleMode = AutoScaleMode.Dpi;
+            statusForm.AutoScaleDimensions = new SizeF(96F, 96F);
 
             // 信息行：灰色标签 + 深色值双色排版，网络状态着色（在线绿 / 断网红）
             string onlineVal = offline ? "已断网" : "在线";
@@ -721,7 +576,7 @@ namespace CNLC
                 new string[] { "最近检测", lastCheck, "" },
                 new string[] { "最近登录", lastLogin, "" }
             };
-            int y = 56;
+            int y = 22;
             foreach (string[] r in rows)
             {
                 Label k = new Label();
@@ -737,15 +592,20 @@ namespace CNLC
                 v.AutoSize = true;
                 v.ForeColor = r[2].Length > 0 ? Color.FromArgb(int.Parse(r[2])) : Color.FromArgb(31, 31, 31);
                 statusForm.Controls.Add(v);
-                y += 26;
+                y += 27;
             }
 
-            // 鼠标任意点击（窗体空白处或任何文字上）即自动关闭
+            Button ok = new Button();
+            ok.Text = "确定";
+            ok.Location = new Point(120, 165);
+            ok.Size = new Size(80, 27);
+            ok.Click += delegate { statusForm.Close(); };
+            statusForm.Controls.Add(ok);
+            statusForm.AcceptButton = ok;
+
+            // 便利保留：点窗口任意位置（文字上）也能直接关闭
             statusForm.Click += delegate { statusForm.Close(); };
-            tp.Click += delegate { statusForm.Close(); };
             foreach (Control c in statusForm.Controls)
-                c.Click += delegate { statusForm.Close(); };
-            foreach (Control c in tp.Controls)
                 c.Click += delegate { statusForm.Close(); };
 
             // 关键：ShowDialog 的窗体 Close 后不会自动 Dispose，IsDisposed 仍为 false，
