@@ -8,6 +8,7 @@
 
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Net;
 using System.Text;
@@ -510,6 +511,48 @@ namespace CNLC
 
         // ================= 状态窗口 / Toast =================
 
+        // 精致无边框弹出窗：投影 + 圆角
+        private class PopupForm : Form
+        {
+            private const int CS_DROPSHADOW = 0x20000;
+            private readonly int radius = 12;
+
+            public PopupForm()
+            {
+                FormBorderStyle = FormBorderStyle.None;
+                StartPosition = FormStartPosition.CenterScreen;
+                ShowInTaskbar = false;
+                DoubleBuffered = true;
+                BackColor = Color.White;
+                TopMost = true;
+            }
+
+            protected override CreateParams CreateParams
+            {
+                get
+                {
+                    CreateParams cp = base.CreateParams;
+                    cp.ClassStyle |= CS_DROPSHADOW;   // 系统级窗口投影
+                    return cp;
+                }
+            }
+
+            protected override void OnLoad(EventArgs e) { base.OnLoad(e); ApplyRadius(); }
+            protected override void OnResize(EventArgs e) { base.OnResize(e); ApplyRadius(); }
+
+            private void ApplyRadius()
+            {
+                int d = radius * 2;
+                GraphicsPath p = new GraphicsPath();
+                p.AddArc(0, 0, d, d, 180, 90);
+                p.AddArc(Width - d - 1, 0, d, d, 270, 90);
+                p.AddArc(Width - d - 1, Height - d - 1, d, d, 0, 90);
+                p.AddArc(0, Height - d - 1, d, d, 90, 90);
+                p.CloseFigure();
+                Region = new Region(p);
+            }
+        }
+
         private static void ShowStatus()
         {
             if (tray == null)
@@ -538,13 +581,32 @@ namespace CNLC
             }
             catch { }
 
-            statusForm = new Form();
-            statusForm.Text = "运行状态";
-            statusForm.ClientSize = new Size(300, 185);
-            statusForm.FormBorderStyle = FormBorderStyle.FixedDialog;
-            statusForm.StartPosition = FormStartPosition.CenterScreen;
-            statusForm.MaximizeBox = false;
-            statusForm.TopMost = true;
+            statusForm = new PopupForm();
+            statusForm.Size = new Size(300, 172);
+
+            // 顶部蓝色渐变标题条
+            Panel tp = new Panel();
+            tp.Dock = DockStyle.Top;
+            tp.Height = 34;
+            tp.Paint += delegate(object s, PaintEventArgs e)
+            {
+                using (LinearGradientBrush b = new LinearGradientBrush(
+                    tp.ClientRectangle,
+                    Color.FromArgb(41, 98, 255),
+                    Color.FromArgb(0, 145, 255),
+                    0f))
+                {
+                    e.Graphics.FillRectangle(b, tp.ClientRectangle);
+                }
+            };
+            Label title = new Label();
+            title.Text = "运行状态";
+            title.ForeColor = Color.White;
+            title.Font = new Font(FontFamily.GenericSansSerif, 10, FontStyle.Bold);
+            title.Location = new Point(18, 7);
+            title.AutoSize = true;
+            tp.Controls.Add(title);
+            statusForm.Controls.Add(tp);
 
             string[] lines = new string[] {
                 "当前账号：" + portalUser,
@@ -553,24 +615,21 @@ namespace CNLC
                 "最近检测：" + lastCheck,
                 "最近登录：" + lastLogin
             };
-            int y = 15;
+            int y = 46;
             foreach (string t in lines)
             {
                 Label lb = NewLabel(t, 20, y);
+                lb.ForeColor = Color.FromArgb(60, 60, 60);
                 statusForm.Controls.Add(lb);
-                y += 24;
+                y += 22;
             }
-            Button ok = new Button();
-            ok.Text = "确定";
-            ok.Location = new Point(110, 150);
-            ok.Size = new Size(80, 26);
-            ok.Click += delegate { statusForm.Close(); };
-            statusForm.Controls.Add(ok);
-            statusForm.AcceptButton = ok;
 
-            // 便利保留：点窗口任意位置（文字上）也能直接关闭，不强制找按钮
+            // 鼠标任意点击（窗体空白处或任何文字上）即自动关闭
             statusForm.Click += delegate { statusForm.Close(); };
+            tp.Click += delegate { statusForm.Close(); };
             foreach (Control c in statusForm.Controls)
+                c.Click += delegate { statusForm.Close(); };
+            foreach (Control c in tp.Controls)
                 c.Click += delegate { statusForm.Close(); };
 
             // 关键：ShowDialog 的窗体 Close 后不会自动 Dispose，IsDisposed 仍为 false，
