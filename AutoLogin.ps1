@@ -325,9 +325,9 @@ function Start-TrayGuard {
     $miGuard  = New-Object System.Windows.Forms.MenuItem '断网自动重连'
     $miGuard.Checked = $true
     $miSwitch = New-Object System.Windows.Forms.MenuItem '切换账号'
-    $miLogout = New-Object System.Windows.Forms.MenuItem '注销（断开网络）'
+    $miLogout = New-Object System.Windows.Forms.MenuItem '注销'
     $miExit   = New-Object System.Windows.Forms.MenuItem '退出'
-    [void]$menu.MenuItems.AddRange(@($miGuard, $miLogout, $miSwitch, (New-Object System.Windows.Forms.MenuItem '-'), $miExit))
+    [void]$menu.MenuItems.AddRange(@($miGuard, $miSwitch, $miLogout, (New-Object System.Windows.Forms.MenuItem '-'), $miExit))
     $script:TrayIcon.ContextMenu = $menu
     $script:MiGuard = $miGuard
 
