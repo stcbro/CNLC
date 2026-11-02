@@ -29,6 +29,8 @@ namespace CNLC
         private const int MaxLoginAttempts = 10;
         private const string RunKeyPath = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
         private const string RunName = "CNLC";
+        // 通知总开关：false = 关闭所有弹动提示（浮条/托盘气泡），完全静默，仅写日志
+        private static readonly bool ShowNotify = false;
 
         private static readonly string BaseDir = AppDomain.CurrentDomain.BaseDirectory;
         private static readonly string LogDir = Path.Combine(BaseDir, "logs");
@@ -79,7 +81,16 @@ namespace CNLC
                 if (string.Equals(a, "-AutoStart", StringComparison.OrdinalIgnoreCase)) autoStart = true;
 
             bool createdNew;
-            mutex = new Mutex(true, "CNLC.SingleInstance", out createdNew);
+            try
+            {
+                mutex = new Mutex(true, "CNLC.SingleInstance", out createdNew);
+            }
+            catch (AbandonedMutexException)
+            {
+                // 上个实例被强制结束导致互斥体遗留（无持有者），本进程安全接管，视为正常启动
+                createdNew = true;
+                try { mutex = new Mutex(false, "CNLC.SingleInstance", out createdNew); } catch { }
+            }
             if (!createdNew)
             {
                 MessageBox.Show("校园内网登录器已在运行（右下角托盘图标）。\n\n如需切换账号，请先右键托盘图标退出，再重新启动。", "提示");
@@ -561,6 +572,7 @@ namespace CNLC
 
         private static void Toast(string message, bool isError)
         {
+            if (!ShowNotify) return;
             Form tf = new Form();
             tf.FormBorderStyle = FormBorderStyle.None;
             tf.StartPosition = FormStartPosition.CenterScreen;
@@ -605,6 +617,7 @@ namespace CNLC
 
         private static void Balloon(string message, bool warning)
         {
+            if (!ShowNotify) return;
             if (tray == null) return;
             try
             {
