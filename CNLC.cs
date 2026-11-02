@@ -55,7 +55,6 @@ namespace CNLC
         // 登录窗口控件（事件处理器需要访问）
         private static TextBox txtUser;
         private static TextBox txtPass;
-        private static Button btnLogin;
         private static CheckBox chkRemember;
         private static CheckBox chkGuard;
         private static CheckBox chkAutoStart;
@@ -156,26 +155,19 @@ namespace CNLC
 
             // 左右分栏：左栏 = 标签+输入框（同一行），右栏 = 登录/注销上下排列
             Label lblUser = NewLabel("工号:", 24, 42);
-            lblUser.ForeColor = Color.FromArgb(102, 102, 102);
+            lblUser.ForeColor = Color.FromArgb(138, 138, 138);
             txtUser = new TextBox();
             txtUser.Location = new Point(78, 36);
             txtUser.Size = new Size(155, 26);
 
-            // 主操作：黑色实心白字（黑白灰简约配色），视觉层级高于注销
-            btnLogin = new Button();
+            Button btnLogin = new Button();
             btnLogin.Text = "登 录";
             btnLogin.Location = new Point(268, 34);
             btnLogin.Size = new Size(92, 30);
-            btnLogin.FlatStyle = FlatStyle.Flat;
-            btnLogin.FlatAppearance.BorderSize = 0;
-            btnLogin.FlatAppearance.MouseOverBackColor = Color.FromArgb(15, 15, 15);
-            btnLogin.FlatAppearance.MouseDownBackColor = Color.Black;
-            btnLogin.BackColor = Color.FromArgb(43, 43, 43);
-            btnLogin.ForeColor = Color.White;
             btnLogin.Cursor = Cursors.Hand;
 
             Label lblPass = NewLabel("密码:", 24, 90);
-            lblPass.ForeColor = Color.FromArgb(102, 102, 102);
+            lblPass.ForeColor = Color.FromArgb(138, 138, 138);
             txtPass = new TextBox();
             txtPass.Location = new Point(78, 84);
             txtPass.Size = new Size(155, 26);
@@ -186,44 +178,30 @@ namespace CNLC
             btnLogout.Location = new Point(268, 82);
             btnLogout.Size = new Size(92, 30);
             btnLogout.Cursor = Cursors.Hand;
-            btnLogout.FlatStyle = FlatStyle.Flat;
-            btnLogout.FlatAppearance.BorderColor = Color.FromArgb(200, 200, 200);
-            btnLogout.FlatAppearance.BorderSize = 1;
-            btnLogout.FlatAppearance.MouseOverBackColor = Color.FromArgb(245, 245, 245);
-            btnLogout.BackColor = Color.White;
-            btnLogout.ForeColor = Color.FromArgb(90, 90, 90);
 
             chkRemember = new CheckBox();
             chkRemember.Text = "记住密码";
-            chkRemember.Location = new Point(30, 184);
+            chkRemember.Location = new Point(30, 176);
             chkRemember.AutoSize = true;
             chkRemember.ForeColor = Color.FromArgb(70, 70, 70);
 
             chkGuard = new CheckBox();
             chkGuard.Text = "断网自动重连";
-            chkGuard.Location = new Point(198, 184);
+            chkGuard.Location = new Point(198, 176);
             chkGuard.AutoSize = true;
             chkGuard.ForeColor = Color.FromArgb(70, 70, 70);
 
             chkAutoStart = new CheckBox();
             chkAutoStart.Text = "开机自启动";
-            chkAutoStart.Location = new Point(30, 214);
+            chkAutoStart.Location = new Point(30, 208);
             chkAutoStart.AutoSize = true;
             chkAutoStart.ForeColor = Color.FromArgb(70, 70, 70);
 
             chkAutoLogin = new CheckBox();
             chkAutoLogin.Text = "开机自登录";
-            chkAutoLogin.Location = new Point(198, 214);
+            chkAutoLogin.Location = new Point(198, 208);
             chkAutoLogin.AutoSize = true;
             chkAutoLogin.ForeColor = Color.FromArgb(70, 70, 70);
-
-            // 分隔线：上方账号操作区 / 下方自动化偏好区
-            Label sep = new Label();
-            sep.Location = new Point(24, 168);
-            sep.Size = new Size(336, 1);
-            sep.BackColor = Color.FromArgb(228, 228, 228);
-            loginForm.Controls.Add(sep);
-            loginForm.ClientSize = new Size(384, 252);
 
             loginForm.Controls.Add(lblUser);
             loginForm.Controls.Add(txtUser);
@@ -318,53 +296,41 @@ namespace CNLC
                 MessageBox.Show("请填写账号和密码。", "提示");
                 return;
             }
+            portalUser = u;
+            portalPass = p;
+            SaveCreds();
 
-            // 防连点：登录中禁用按钮并显示状态，完成后恢复
-            btnLogin.Enabled = false;
-            btnLogin.Text = "登录中";
-            try
+            if (tray != null)
             {
-                portalUser = u;
-                portalPass = p;
-                SaveCreds();
+                tray.Text = "校园内网登录器 - " + u + "（每 " + CheckIntervalSec + "s 检测）";
+                Log("账号已切换为 " + u);
+            }
 
-                if (tray != null)
+            if (chkGuard.Checked)
+            {
+                // 登录 + 开启守护：隐藏窗口，立即认证并进入守护
+                loginForm.Hide();
+                GuardStart();
+            }
+            else
+            {
+                // 仅登录：只认证上网，不开守护（窗口保持打开，浮条提示自动消失）
+                Log("正在登录认证（仅登录，守护未开启）...");
+                PortalLogin();
+                System.Threading.Thread.Sleep(1000);
+                if (TestOffline())
                 {
-                    tray.Text = "校园内网登录器 - " + u + "（每 " + CheckIntervalSec + "s 检测）";
-                    Log("账号已切换为 " + u);
-                }
-
-                if (chkGuard.Checked)
-                {
-                    // 登录 + 开启守护：隐藏窗口，立即认证并进入守护
-                    loginForm.Hide();
-                    GuardStart();
+                    Log("登录未成功：服务器可能暂时拒绝，请稍后重试或检查账号密码。");
+                    Toast("登录未成功，请稍后重试", true);
                 }
                 else
                 {
-                    // 仅登录：只认证上网，不开守护（窗口保持打开，浮条提示自动消失）
-                    Log("正在登录认证（仅登录，守护未开启）...");
-                    PortalLogin();
-                    System.Threading.Thread.Sleep(1000);
-                    if (TestOffline())
-                    {
-                        Log("登录未成功：服务器可能暂时拒绝，请稍后重试或检查账号密码。");
-                        Toast("登录未成功，请稍后重试", true);
-                    }
-                    else
-                    {
-                        ExtendedRetry = false;
-                        SaveState(true);
-                        Log("登录成功，网络已恢复！（守护未开启）");
-                        Toast("登录成功，网络已恢复", false);
-                        if (tray != null) Balloon("登录成功，网络已恢复！（守护未开启）", false);
-                    }
+                    ExtendedRetry = false;
+                    SaveState(true);
+                    Log("登录成功，网络已恢复！（守护未开启）");
+                    Toast("登录成功，网络已恢复", false);
+                    if (tray != null) Balloon("登录成功，网络已恢复！（守护未开启）", false);
                 }
-            }
-            finally
-            {
-                btnLogin.Enabled = true;
-                btnLogin.Text = "登 录";
             }
         }
 
