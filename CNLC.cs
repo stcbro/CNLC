@@ -8,7 +8,6 @@
 
 using System;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.IO;
 using System.Net;
 using System.Text;
@@ -68,16 +67,11 @@ namespace CNLC
         private static string savedPass = "";
         private static bool savedAutoLogin = false;
 
-        // 高分屏（125%/150% 缩放）下让文字原生渲染，清晰不发虚
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern bool SetProcessDPIAware();
-
         [STAThread]
         private static void Main(string[] args)
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            try { SetProcessDPIAware(); } catch { }
             try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072 | SecurityProtocolType.Tls; } catch { }
             WebRequest.DefaultWebProxy = new WebProxy();   // 强制直连，绕过本地 VPN/代理
             Directory.CreateDirectory(LogDir);
@@ -143,65 +137,54 @@ namespace CNLC
         {
             loginForm = new Form();
             loginForm.Text = "校园内网登录器";
-            loginForm.ClientSize = new Size(384, 244);
+            loginForm.ClientSize = new Size(320, 182);
             loginForm.FormBorderStyle = FormBorderStyle.FixedSingle;
             loginForm.StartPosition = FormStartPosition.CenterScreen;
             loginForm.MaximizeBox = false;
             loginForm.TopMost = true;
             try { loginForm.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
-            try { loginForm.Font = new Font("Microsoft YaHei UI", 11F); } catch { }
-            loginForm.AutoScaleMode = AutoScaleMode.Dpi;
-            loginForm.AutoScaleDimensions = new SizeF(96F, 96F);
 
             // 左右分栏：左栏 = 标签+输入框（同一行），右栏 = 登录/注销上下排列
-            Label lblUser = NewLabel("工号:", 24, 42);
-            lblUser.ForeColor = Color.FromArgb(138, 138, 138);
+            Label lblUser = NewLabel("工号:", 20, 34);
             txtUser = new TextBox();
-            txtUser.Location = new Point(78, 36);
-            txtUser.Size = new Size(155, 26);
+            txtUser.Location = new Point(62, 30);
+            txtUser.Size = new Size(145, 23);
 
             Button btnLogin = new Button();
             btnLogin.Text = "登 录";
-            btnLogin.Location = new Point(268, 34);
-            btnLogin.Size = new Size(92, 30);
-            btnLogin.Cursor = Cursors.Hand;
+            btnLogin.Location = new Point(225, 30);
+            btnLogin.Size = new Size(72, 26);
 
-            Label lblPass = NewLabel("密码:", 24, 90);
-            lblPass.ForeColor = Color.FromArgb(138, 138, 138);
+            Label lblPass = NewLabel("密码:", 20, 72);
             txtPass = new TextBox();
-            txtPass.Location = new Point(78, 84);
-            txtPass.Size = new Size(155, 26);
+            txtPass.Location = new Point(62, 68);
+            txtPass.Size = new Size(145, 23);
             txtPass.PasswordChar = '*';
 
             Button btnLogout = new Button();
             btnLogout.Text = "注 销";
-            btnLogout.Location = new Point(268, 82);
-            btnLogout.Size = new Size(92, 30);
-            btnLogout.Cursor = Cursors.Hand;
+            btnLogout.Location = new Point(225, 68);
+            btnLogout.Size = new Size(72, 26);
 
             chkRemember = new CheckBox();
             chkRemember.Text = "记住密码";
-            chkRemember.Location = new Point(30, 176);
+            chkRemember.Location = new Point(25, 120);
             chkRemember.AutoSize = true;
-            chkRemember.ForeColor = Color.FromArgb(70, 70, 70);
 
             chkGuard = new CheckBox();
             chkGuard.Text = "断网自动重连";
-            chkGuard.Location = new Point(198, 176);
+            chkGuard.Location = new Point(165, 120);
             chkGuard.AutoSize = true;
-            chkGuard.ForeColor = Color.FromArgb(70, 70, 70);
 
             chkAutoStart = new CheckBox();
             chkAutoStart.Text = "开机自启动";
-            chkAutoStart.Location = new Point(30, 208);
+            chkAutoStart.Location = new Point(25, 146);
             chkAutoStart.AutoSize = true;
-            chkAutoStart.ForeColor = Color.FromArgb(70, 70, 70);
 
             chkAutoLogin = new CheckBox();
             chkAutoLogin.Text = "开机自登录";
-            chkAutoLogin.Location = new Point(198, 208);
+            chkAutoLogin.Location = new Point(165, 146);
             chkAutoLogin.AutoSize = true;
-            chkAutoLogin.ForeColor = Color.FromArgb(70, 70, 70);
 
             loginForm.Controls.Add(lblUser);
             loginForm.Controls.Add(txtUser);
@@ -557,53 +540,43 @@ namespace CNLC
 
             statusForm = new Form();
             statusForm.Text = "运行状态";
-            statusForm.ClientSize = new Size(340, 200);
-            statusForm.FormBorderStyle = FormBorderStyle.None;   // 无确定按钮、无 - 口 X
+            statusForm.ClientSize = new Size(300, 158);
+            statusForm.FormBorderStyle = FormBorderStyle.None;   // 无边框：无 - 口 X，也不放确定按钮
             statusForm.StartPosition = FormStartPosition.CenterScreen;
             statusForm.TopMost = true;
-            try { statusForm.Font = new Font("Microsoft YaHei UI", 10.5F); } catch { }
-            statusForm.AutoScaleMode = AutoScaleMode.Dpi;
-            statusForm.AutoScaleDimensions = new SizeF(96F, 96F);
-            // 一圈浅灰细边框，避免白底和桌面融在一起
-            statusForm.Paint += delegate(object s, PaintEventArgs e)
-            {
-                e.Graphics.DrawRectangle(new Pen(Color.FromArgb(190, 190, 190)),
-                    0, 0, statusForm.ClientSize.Width - 1, statusForm.ClientSize.Height - 1);
-            };
+            statusForm.BackColor = Color.White;
 
-            // 信息行：灰色标签 + 深色值双色排版，网络状态着色（在线绿 / 断网红）
-            string onlineVal = offline ? "已断网" : "在线";
-            Color onlineClr = offline ? Color.FromArgb(211, 47, 47) : Color.FromArgb(27, 126, 60);
-            string[][] rows = new string[][] {
-                new string[] { "当前账号", portalUser, "" },
-                new string[] { "网络状态", onlineVal, onlineClr.ToArgb().ToString() },
-                new string[] { "检测间隔", CheckIntervalSec + " 秒", "" },
-                new string[] { "最近检测", lastCheck, "" },
-                new string[] { "最近登录", lastLogin, "" }
-            };
-            int y = 26;
-            foreach (string[] r in rows)
-            {
-                Label k = new Label();
-                k.Text = r[0];
-                k.Location = new Point(30, y);
-                k.AutoSize = true;
-                k.ForeColor = Color.FromArgb(138, 138, 138);
-                statusForm.Controls.Add(k);
+            // 无边框窗体手动绘制标题区
+            Label title = NewLabel("运行状态", 20, 12);
+            title.Font = new Font(FontFamily.GenericSansSerif, 10, FontStyle.Bold);
+            statusForm.Controls.Add(title);
 
-                Label v = new Label();
-                v.Text = r[1];
-                v.Location = new Point(130, y);
-                v.AutoSize = true;
-                v.ForeColor = r[2].Length > 0 ? Color.FromArgb(int.Parse(r[2])) : Color.FromArgb(31, 31, 31);
-                statusForm.Controls.Add(v);
-                y += 30;
+            string[] lines = new string[] {
+                "当前账号：" + portalUser,
+                "网络状态：" + (offline ? "已断网" : "在线"),
+                "检测间隔：" + CheckIntervalSec + " 秒",
+                "最近检测：" + lastCheck,
+                "最近登录：" + lastLogin
+            };
+            int y = 42;
+            foreach (string t in lines)
+            {
+                Label lb = NewLabel(t, 20, y);
+                statusForm.Controls.Add(lb);
+                y += 22;
             }
 
-            // 无按钮：点击窗口任意位置（空白处或文字上）即关闭
+            // 鼠标任意点击（窗体空白处或任何文字上）即自动关闭
             statusForm.Click += delegate { statusForm.Close(); };
             foreach (Control c in statusForm.Controls)
                 c.Click += delegate { statusForm.Close(); };
+
+            // 无边框窗体手动画一圈细边框，避免和白背景融在一起
+            statusForm.Paint += delegate(object s, PaintEventArgs e)
+            {
+                e.Graphics.DrawRectangle(new Pen(Color.FromArgb(120, 120, 120)),
+                    0, 0, statusForm.ClientSize.Width - 1, statusForm.ClientSize.Height - 1);
+            };
 
             // 关键：ShowDialog 的窗体 Close 后不会自动 Dispose，IsDisposed 仍为 false，
             // 若不清理引用，下次左键会被单实例守卫误判为"已打开"而只 Activate（无反应）
