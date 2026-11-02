@@ -540,16 +540,11 @@ namespace CNLC
 
             statusForm = new Form();
             statusForm.Text = "运行状态";
-            statusForm.ClientSize = new Size(300, 158);
-            statusForm.FormBorderStyle = FormBorderStyle.None;   // 无边框：无 - 口 X，也不放确定按钮
+            statusForm.ClientSize = new Size(300, 185);
+            statusForm.FormBorderStyle = FormBorderStyle.FixedDialog;
             statusForm.StartPosition = FormStartPosition.CenterScreen;
+            statusForm.MaximizeBox = false;
             statusForm.TopMost = true;
-            statusForm.BackColor = Color.White;
-
-            // 无边框窗体手动绘制标题区
-            Label title = NewLabel("运行状态", 20, 12);
-            title.Font = new Font(FontFamily.GenericSansSerif, 10, FontStyle.Bold);
-            statusForm.Controls.Add(title);
 
             string[] lines = new string[] {
                 "当前账号：" + portalUser,
@@ -558,25 +553,25 @@ namespace CNLC
                 "最近检测：" + lastCheck,
                 "最近登录：" + lastLogin
             };
-            int y = 42;
+            int y = 15;
             foreach (string t in lines)
             {
                 Label lb = NewLabel(t, 20, y);
                 statusForm.Controls.Add(lb);
-                y += 22;
+                y += 24;
             }
+            Button ok = new Button();
+            ok.Text = "确定";
+            ok.Location = new Point(110, 150);
+            ok.Size = new Size(80, 26);
+            ok.Click += delegate { statusForm.Close(); };
+            statusForm.Controls.Add(ok);
+            statusForm.AcceptButton = ok;
 
-            // 鼠标任意点击（窗体空白处或任何文字上）即自动关闭
+            // 便利保留：点窗口任意位置（文字上）也能直接关闭，不强制找按钮
             statusForm.Click += delegate { statusForm.Close(); };
             foreach (Control c in statusForm.Controls)
                 c.Click += delegate { statusForm.Close(); };
-
-            // 无边框窗体手动画一圈细边框，避免和白背景融在一起
-            statusForm.Paint += delegate(object s, PaintEventArgs e)
-            {
-                e.Graphics.DrawRectangle(new Pen(Color.FromArgb(120, 120, 120)),
-                    0, 0, statusForm.ClientSize.Width - 1, statusForm.ClientSize.Height - 1);
-            };
 
             // 关键：ShowDialog 的窗体 Close 后不会自动 Dispose，IsDisposed 仍为 false，
             // 若不清理引用，下次左键会被单实例守卫误判为"已打开"而只 Activate（无反应）
