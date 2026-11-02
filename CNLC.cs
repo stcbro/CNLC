@@ -215,15 +215,8 @@ namespace CNLC
             chkGuard.CheckedChanged += delegate
             {
                 if (suppressGuard) return;
-                if (chkGuard.Checked)
-                {
-                    if (portalUser.Length == 0)
-                    {
-                        suppressGuard = true; chkGuard.Checked = false; suppressGuard = false;
-                        MessageBox.Show("请先登录，再开启守护。", "提示");
-                    }
-                    else { loginForm.Hide(); GuardStart(); }
-                }
+                if (portalUser.Length == 0) return;   // 未登录：仅记住勾选偏好，登录时自动按此生效
+                if (chkGuard.Checked) { loginForm.Hide(); GuardStart(); }
                 else StopGuard();
             };
 
