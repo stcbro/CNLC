@@ -70,7 +70,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Exe.ps1
 | `dist\CNLC.dat` | 记住密码凭据（运行时生成，隐藏文件） |
 | `dist\logs\` | 日志目录（运行时生成） |
 
-> 历史文件：`Config.ps1` / `AutoLogin.ps1` / `Monitor.ps1` / `launch_login.vbs` 等为早期 PowerShell 版本的产物，已被 C# 版取代，仅作存档。
+> 早期 PowerShell 版本的脚本（Config.ps1 / AutoLogin.ps1 等）已移除，如需查阅请看 git 提交历史（`2951fe2`）。
 
 ## 常见问题
 
