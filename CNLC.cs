@@ -260,10 +260,8 @@ namespace CNLC
                             content = Regex.Replace(content, "\"autoLogin\"\\s*:\\s*(true|false)", "\"autoLogin\": " + val);
                         else
                             content = content.TrimEnd().TrimEnd('}') + ",\n  \"autoLogin\": " + val + "\n}";
-                        File.WriteAllText(CredFile, content, Encoding.UTF8);
-                        HideCredFile();
-                        Log(chkAutoLogin.Checked ? "已开启开机自登录" : "已关闭开机自登录");
-                    }
+                        WriteCredFile(content);
+                        Log(chkAutoLogin.Checked ? "已开启开机自登录" : "已关闭开机自登录");}
                     catch { }
                 }
             };
@@ -568,6 +566,13 @@ namespace CNLC
             ok.Click += delegate { statusForm.Close(); };
             statusForm.Controls.Add(ok);
             statusForm.AcceptButton = ok;
+            // 关键：ShowDialog 的窗体 Close 后不会自动 Dispose，IsDisposed 仍为 false，
+            // 若不清理引用，下次左键会被单实例守卫误判为"已打开"而只 Activate（无反应）
+            statusForm.FormClosed += delegate
+            {
+                try { statusForm.Dispose(); } catch { }
+                statusForm = null;
+            };
             statusForm.ShowDialog();
         }
 
@@ -796,6 +801,15 @@ namespace CNLC
             try { File.SetAttributes(CredFile, FileAttributes.Hidden | FileAttributes.System); } catch { }
         }
 
+        private static void WriteCredFile(string content)
+        {
+            // 注意：.NET 的 File.WriteAllText 无法覆盖写入隐藏文件（抛 UnauthorizedAccessException），
+            // 必须先去掉属性，写完再恢复隐藏
+            try { File.SetAttributes(CredFile, FileAttributes.Archive); } catch { }
+            File.WriteAllText(CredFile, content, Encoding.UTF8);
+            HideCredFile();
+        }
+
         private static void SaveCreds()
         {
             if (chkRemember.Checked)
@@ -805,8 +819,7 @@ namespace CNLC
                     string content = "{\n  \"user\": \"" + portalUser + "\",\n  \"pass\": \"" +
                         Convert.ToBase64String(Encoding.UTF8.GetBytes(portalPass)) +
                         "\",\n  \"autoLogin\": " + (chkAutoLogin.Checked ? "true" : "false") + "\n}";
-                    File.WriteAllText(CredFile, content, Encoding.UTF8);
-                    HideCredFile();
+                    WriteCredFile(content);
                 }
                 catch (Exception ex)
                 {
