@@ -144,27 +144,27 @@ namespace CNLC
             loginForm.TopMost = true;
             try { loginForm.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
-            Label lblUser = NewLabel("工号:", 25, 15);
+            // 左右分栏：左栏 = 标签+输入框（同一行），右栏 = 登录/注销上下排列
+            Label lblUser = NewLabel("工号:", 20, 34);
             txtUser = new TextBox();
-            txtUser.Location = new Point(25, 35);
-            txtUser.Size = new Size(185, 23);
+            txtUser.Location = new Point(62, 30);
+            txtUser.Size = new Size(145, 23);
 
-            Label lblPass = NewLabel("密码:", 25, 64);
-            txtPass = new TextBox();
-            txtPass.Location = new Point(25, 84);
-            txtPass.Size = new Size(185, 23);
-            txtPass.PasswordChar = '*';
-
-            // 登录/注销按钮放到输入框右侧，上下排列
             Button btnLogin = new Button();
             btnLogin.Text = "登 录";
-            btnLogin.Location = new Point(225, 33);
-            btnLogin.Size = new Size(70, 26);
+            btnLogin.Location = new Point(225, 30);
+            btnLogin.Size = new Size(72, 26);
+
+            Label lblPass = NewLabel("密码:", 20, 72);
+            txtPass = new TextBox();
+            txtPass.Location = new Point(62, 68);
+            txtPass.Size = new Size(145, 23);
+            txtPass.PasswordChar = '*';
 
             Button btnLogout = new Button();
             btnLogout.Text = "注 销";
-            btnLogout.Location = new Point(225, 82);
-            btnLogout.Size = new Size(70, 26);
+            btnLogout.Location = new Point(225, 68);
+            btnLogout.Size = new Size(72, 26);
 
             chkRemember = new CheckBox();
             chkRemember.Text = "记住密码";
