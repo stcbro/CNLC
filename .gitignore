@@ -8,8 +8,10 @@ auto_login_status.txt
 # 凭据文件（含编码后的账号密码，严禁提交）
 credentials.txt
 credentials.bak
+CNLC.dat
 dist/credentials.txt
 dist/credentials.bak
+dist/CNLC.dat
 
 # 构建中间产物
 dist/AutoLogin_merged.ps1
