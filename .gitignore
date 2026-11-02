@@ -15,3 +15,4 @@ dist/CNLC.dat
 
 # 构建中间产物
 dist/AutoLogin_merged.ps1
+dist/.gitmsg.txt
