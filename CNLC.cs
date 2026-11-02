@@ -137,7 +137,7 @@ namespace CNLC
         {
             loginForm = new Form();
             loginForm.Text = "校园内网登录器";
-            loginForm.ClientSize = new Size(320, 215);
+            loginForm.ClientSize = new Size(320, 182);
             loginForm.FormBorderStyle = FormBorderStyle.FixedSingle;
             loginForm.StartPosition = FormStartPosition.CenterScreen;
             loginForm.MaximizeBox = false;
@@ -147,42 +147,43 @@ namespace CNLC
             Label lblUser = NewLabel("工号:", 25, 15);
             txtUser = new TextBox();
             txtUser.Location = new Point(25, 35);
-            txtUser.Size = new Size(270, 23);
+            txtUser.Size = new Size(185, 23);
 
             Label lblPass = NewLabel("密码:", 25, 64);
             txtPass = new TextBox();
             txtPass.Location = new Point(25, 84);
-            txtPass.Size = new Size(270, 23);
+            txtPass.Size = new Size(185, 23);
             txtPass.PasswordChar = '*';
 
+            // 登录/注销按钮放到输入框右侧，上下排列
             Button btnLogin = new Button();
             btnLogin.Text = "登 录";
-            btnLogin.Location = new Point(25, 116);
-            btnLogin.Size = new Size(130, 30);
+            btnLogin.Location = new Point(225, 33);
+            btnLogin.Size = new Size(70, 26);
 
             Button btnLogout = new Button();
             btnLogout.Text = "注 销";
-            btnLogout.Location = new Point(165, 116);
-            btnLogout.Size = new Size(130, 30);
+            btnLogout.Location = new Point(225, 82);
+            btnLogout.Size = new Size(70, 26);
 
             chkRemember = new CheckBox();
             chkRemember.Text = "记住密码";
-            chkRemember.Location = new Point(25, 156);
+            chkRemember.Location = new Point(25, 120);
             chkRemember.AutoSize = true;
 
             chkGuard = new CheckBox();
             chkGuard.Text = "断网自动重连";
-            chkGuard.Location = new Point(165, 156);
+            chkGuard.Location = new Point(165, 120);
             chkGuard.AutoSize = true;
 
             chkAutoStart = new CheckBox();
             chkAutoStart.Text = "开机自启动";
-            chkAutoStart.Location = new Point(25, 182);
+            chkAutoStart.Location = new Point(25, 146);
             chkAutoStart.AutoSize = true;
 
             chkAutoLogin = new CheckBox();
             chkAutoLogin.Text = "开机自登录";
-            chkAutoLogin.Location = new Point(165, 182);
+            chkAutoLogin.Location = new Point(165, 146);
             chkAutoLogin.AutoSize = true;
 
             loginForm.Controls.Add(lblUser);
@@ -539,11 +540,16 @@ namespace CNLC
 
             statusForm = new Form();
             statusForm.Text = "运行状态";
-            statusForm.ClientSize = new Size(300, 185);
-            statusForm.FormBorderStyle = FormBorderStyle.FixedDialog;
+            statusForm.ClientSize = new Size(300, 158);
+            statusForm.FormBorderStyle = FormBorderStyle.None;   // 无边框：无 - 口 X，也不放确定按钮
             statusForm.StartPosition = FormStartPosition.CenterScreen;
-            statusForm.MaximizeBox = false;
             statusForm.TopMost = true;
+            statusForm.BackColor = Color.White;
+
+            // 无边框窗体手动绘制标题区
+            Label title = NewLabel("运行状态", 20, 12);
+            title.Font = new Font(FontFamily.GenericSansSerif, 10, FontStyle.Bold);
+            statusForm.Controls.Add(title);
 
             string[] lines = new string[] {
                 "当前账号：" + portalUser,
@@ -552,20 +558,26 @@ namespace CNLC
                 "最近检测：" + lastCheck,
                 "最近登录：" + lastLogin
             };
-            int y = 15;
+            int y = 42;
             foreach (string t in lines)
             {
                 Label lb = NewLabel(t, 20, y);
                 statusForm.Controls.Add(lb);
-                y += 24;
+                y += 22;
             }
-            Button ok = new Button();
-            ok.Text = "确定";
-            ok.Location = new Point(110, 150);
-            ok.Size = new Size(80, 26);
-            ok.Click += delegate { statusForm.Close(); };
-            statusForm.Controls.Add(ok);
-            statusForm.AcceptButton = ok;
+
+            // 鼠标任意点击（窗体空白处或任何文字上）即自动关闭
+            statusForm.Click += delegate { statusForm.Close(); };
+            foreach (Control c in statusForm.Controls)
+                c.Click += delegate { statusForm.Close(); };
+
+            // 无边框窗体手动画一圈细边框，避免和白背景融在一起
+            statusForm.Paint += delegate(object s, PaintEventArgs e)
+            {
+                e.Graphics.DrawRectangle(new Pen(Color.FromArgb(120, 120, 120)),
+                    0, 0, statusForm.ClientSize.Width - 1, statusForm.ClientSize.Height - 1);
+            };
+
             // 关键：ShowDialog 的窗体 Close 后不会自动 Dispose，IsDisposed 仍为 false，
             // 若不清理引用，下次左键会被单实例守卫误判为"已打开"而只 Activate（无反应）
             statusForm.FormClosed += delegate
