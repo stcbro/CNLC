@@ -141,6 +141,7 @@ namespace CNLC
             loginForm.FormBorderStyle = FormBorderStyle.FixedSingle;
             loginForm.StartPosition = FormStartPosition.CenterScreen;
             loginForm.MaximizeBox = false;
+            loginForm.MinimizeBox = false;   // 标题栏只留 ×（最小化/最大化没用，程序就是进托盘的）
             loginForm.TopMost = true;
             try { loginForm.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
