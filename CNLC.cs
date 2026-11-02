@@ -525,6 +525,7 @@ namespace CNLC
                 DoubleBuffered = true;
                 BackColor = Color.White;
                 TopMost = true;
+                try { Font = new Font("Microsoft YaHei UI", 9.5F); } catch { }
             }
 
             protected override CreateParams CreateParams
@@ -582,12 +583,12 @@ namespace CNLC
             catch { }
 
             statusForm = new PopupForm();
-            statusForm.Size = new Size(300, 172);
+            statusForm.Size = new Size(320, 196);
 
             // 顶部蓝色渐变标题条
             Panel tp = new Panel();
             tp.Dock = DockStyle.Top;
-            tp.Height = 34;
+            tp.Height = 38;
             tp.Paint += delegate(object s, PaintEventArgs e)
             {
                 using (LinearGradientBrush b = new LinearGradientBrush(
@@ -602,26 +603,39 @@ namespace CNLC
             Label title = new Label();
             title.Text = "运行状态";
             title.ForeColor = Color.White;
-            title.Font = new Font(FontFamily.GenericSansSerif, 10, FontStyle.Bold);
-            title.Location = new Point(18, 7);
+            title.Font = new Font("Microsoft YaHei UI", 11F, FontStyle.Bold);
+            title.Location = new Point(22, 6);
             title.AutoSize = true;
             tp.Controls.Add(title);
             statusForm.Controls.Add(tp);
 
-            string[] lines = new string[] {
-                "当前账号：" + portalUser,
-                "网络状态：" + (offline ? "已断网" : "在线"),
-                "检测间隔：" + CheckIntervalSec + " 秒",
-                "最近检测：" + lastCheck,
-                "最近登录：" + lastLogin
+            // 信息行：灰色标签 + 深色值双色排版，网络状态着色（在线绿 / 断网红）
+            string onlineVal = offline ? "已断网" : "在线";
+            Color onlineClr = offline ? Color.FromArgb(211, 47, 47) : Color.FromArgb(27, 126, 60);
+            string[][] rows = new string[][] {
+                new string[] { "当前账号", portalUser, "" },
+                new string[] { "网络状态", onlineVal, onlineClr.ToArgb().ToString() },
+                new string[] { "检测间隔", CheckIntervalSec + " 秒", "" },
+                new string[] { "最近检测", lastCheck, "" },
+                new string[] { "最近登录", lastLogin, "" }
             };
-            int y = 46;
-            foreach (string t in lines)
+            int y = 56;
+            foreach (string[] r in rows)
             {
-                Label lb = NewLabel(t, 20, y);
-                lb.ForeColor = Color.FromArgb(60, 60, 60);
-                statusForm.Controls.Add(lb);
-                y += 22;
+                Label k = new Label();
+                k.Text = r[0];
+                k.Location = new Point(26, y);
+                k.AutoSize = true;
+                k.ForeColor = Color.FromArgb(138, 138, 138);
+                statusForm.Controls.Add(k);
+
+                Label v = new Label();
+                v.Text = r[1];
+                v.Location = new Point(112, y);
+                v.AutoSize = true;
+                v.ForeColor = r[2].Length > 0 ? Color.FromArgb(int.Parse(r[2])) : Color.FromArgb(31, 31, 31);
+                statusForm.Controls.Add(v);
+                y += 26;
             }
 
             // 鼠标任意点击（窗体空白处或任何文字上）即自动关闭
