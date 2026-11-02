@@ -143,63 +143,63 @@ namespace CNLC
         {
             loginForm = new Form();
             loginForm.Text = "校园内网登录器";
-            loginForm.ClientSize = new Size(320, 182);
+            loginForm.ClientSize = new Size(384, 244);
             loginForm.FormBorderStyle = FormBorderStyle.FixedSingle;
             loginForm.StartPosition = FormStartPosition.CenterScreen;
             loginForm.MaximizeBox = false;
             loginForm.TopMost = true;
             try { loginForm.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
-            try { loginForm.Font = new Font("Microsoft YaHei UI", 9.5F); } catch { }
+            try { loginForm.Font = new Font("Microsoft YaHei UI", 11F); } catch { }
             loginForm.AutoScaleMode = AutoScaleMode.Dpi;
             loginForm.AutoScaleDimensions = new SizeF(96F, 96F);
 
             // 左右分栏：左栏 = 标签+输入框（同一行），右栏 = 登录/注销上下排列
-            Label lblUser = NewLabel("工号:", 20, 34);
+            Label lblUser = NewLabel("工号:", 24, 42);
             lblUser.ForeColor = Color.FromArgb(138, 138, 138);
             txtUser = new TextBox();
-            txtUser.Location = new Point(62, 30);
-            txtUser.Size = new Size(145, 23);
+            txtUser.Location = new Point(78, 36);
+            txtUser.Size = new Size(155, 26);
 
             Button btnLogin = new Button();
             btnLogin.Text = "登 录";
-            btnLogin.Location = new Point(225, 30);
-            btnLogin.Size = new Size(72, 26);
+            btnLogin.Location = new Point(268, 34);
+            btnLogin.Size = new Size(92, 30);
             btnLogin.Cursor = Cursors.Hand;
 
-            Label lblPass = NewLabel("密码:", 20, 72);
+            Label lblPass = NewLabel("密码:", 24, 90);
             lblPass.ForeColor = Color.FromArgb(138, 138, 138);
             txtPass = new TextBox();
-            txtPass.Location = new Point(62, 68);
-            txtPass.Size = new Size(145, 23);
+            txtPass.Location = new Point(78, 84);
+            txtPass.Size = new Size(155, 26);
             txtPass.PasswordChar = '*';
 
             Button btnLogout = new Button();
             btnLogout.Text = "注 销";
-            btnLogout.Location = new Point(225, 68);
-            btnLogout.Size = new Size(72, 26);
+            btnLogout.Location = new Point(268, 82);
+            btnLogout.Size = new Size(92, 30);
             btnLogout.Cursor = Cursors.Hand;
 
             chkRemember = new CheckBox();
             chkRemember.Text = "记住密码";
-            chkRemember.Location = new Point(25, 120);
+            chkRemember.Location = new Point(30, 176);
             chkRemember.AutoSize = true;
             chkRemember.ForeColor = Color.FromArgb(70, 70, 70);
 
             chkGuard = new CheckBox();
             chkGuard.Text = "断网自动重连";
-            chkGuard.Location = new Point(165, 120);
+            chkGuard.Location = new Point(198, 176);
             chkGuard.AutoSize = true;
             chkGuard.ForeColor = Color.FromArgb(70, 70, 70);
 
             chkAutoStart = new CheckBox();
             chkAutoStart.Text = "开机自启动";
-            chkAutoStart.Location = new Point(25, 146);
+            chkAutoStart.Location = new Point(30, 208);
             chkAutoStart.AutoSize = true;
             chkAutoStart.ForeColor = Color.FromArgb(70, 70, 70);
 
             chkAutoLogin = new CheckBox();
             chkAutoLogin.Text = "开机自登录";
-            chkAutoLogin.Location = new Point(165, 146);
+            chkAutoLogin.Location = new Point(198, 208);
             chkAutoLogin.AutoSize = true;
             chkAutoLogin.ForeColor = Color.FromArgb(70, 70, 70);
 
@@ -557,14 +557,19 @@ namespace CNLC
 
             statusForm = new Form();
             statusForm.Text = "运行状态";
-            statusForm.ClientSize = new Size(320, 200);
-            statusForm.FormBorderStyle = FormBorderStyle.FixedDialog;
+            statusForm.ClientSize = new Size(340, 200);
+            statusForm.FormBorderStyle = FormBorderStyle.None;   // 无确定按钮、无 - 口 X
             statusForm.StartPosition = FormStartPosition.CenterScreen;
-            statusForm.MaximizeBox = false;
             statusForm.TopMost = true;
-            try { statusForm.Font = new Font("Microsoft YaHei UI", 9.5F); } catch { }
+            try { statusForm.Font = new Font("Microsoft YaHei UI", 10.5F); } catch { }
             statusForm.AutoScaleMode = AutoScaleMode.Dpi;
             statusForm.AutoScaleDimensions = new SizeF(96F, 96F);
+            // 一圈浅灰细边框，避免白底和桌面融在一起
+            statusForm.Paint += delegate(object s, PaintEventArgs e)
+            {
+                e.Graphics.DrawRectangle(new Pen(Color.FromArgb(190, 190, 190)),
+                    0, 0, statusForm.ClientSize.Width - 1, statusForm.ClientSize.Height - 1);
+            };
 
             // 信息行：灰色标签 + 深色值双色排版，网络状态着色（在线绿 / 断网红）
             string onlineVal = offline ? "已断网" : "在线";
@@ -576,34 +581,26 @@ namespace CNLC
                 new string[] { "最近检测", lastCheck, "" },
                 new string[] { "最近登录", lastLogin, "" }
             };
-            int y = 22;
+            int y = 26;
             foreach (string[] r in rows)
             {
                 Label k = new Label();
                 k.Text = r[0];
-                k.Location = new Point(26, y);
+                k.Location = new Point(30, y);
                 k.AutoSize = true;
                 k.ForeColor = Color.FromArgb(138, 138, 138);
                 statusForm.Controls.Add(k);
 
                 Label v = new Label();
                 v.Text = r[1];
-                v.Location = new Point(112, y);
+                v.Location = new Point(130, y);
                 v.AutoSize = true;
                 v.ForeColor = r[2].Length > 0 ? Color.FromArgb(int.Parse(r[2])) : Color.FromArgb(31, 31, 31);
                 statusForm.Controls.Add(v);
-                y += 27;
+                y += 30;
             }
 
-            Button ok = new Button();
-            ok.Text = "确定";
-            ok.Location = new Point(120, 165);
-            ok.Size = new Size(80, 27);
-            ok.Click += delegate { statusForm.Close(); };
-            statusForm.Controls.Add(ok);
-            statusForm.AcceptButton = ok;
-
-            // 便利保留：点窗口任意位置（文字上）也能直接关闭
+            // 无按钮：点击窗口任意位置（空白处或文字上）即关闭
             statusForm.Click += delegate { statusForm.Close(); };
             foreach (Control c in statusForm.Controls)
                 c.Click += delegate { statusForm.Close(); };
