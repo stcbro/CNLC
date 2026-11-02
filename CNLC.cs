@@ -341,9 +341,10 @@ namespace CNLC
             ToolStripMenuItem miSwitch = new ToolStripMenuItem("切换账号");
             miSwitch.Click += delegate
             {
+                // 切换账号 = 暂停检测、弹回登录窗；不动"断网自动重连"开关，
+                // 重新登录后守护按登录窗里的勾选状态自动恢复
                 if (timer != null) timer.Stop();
                 GuardOn = false;
-                if (miGuard != null) miGuard.Checked = false;
                 tray.Text = "校园内网登录器 - 待重新登录";
                 txtUser.Text = portalUser;
                 txtPass.Text = portalPass;
