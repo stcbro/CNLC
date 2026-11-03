@@ -240,31 +240,6 @@ namespace CNLC
             };
             titlePanel.Controls.Add(minBtn);
 
-            // "关于"按钮：minBtn 左侧，自绘圆圈 i 图标，点击弹出软件简介
-            Label aboutBtn = new Label();
-            aboutBtn.Size = new Size(46, 32);
-            aboutBtn.Location = new Point(320 - 138, 0);
-            aboutBtn.ForeColor = Color.FromArgb(60, 60, 60);
-            aboutBtn.BackColor = TitleBarBack;
-            aboutBtn.Cursor = Cursors.Hand;
-            aboutBtn.Click += delegate { ShowAbout(); };
-            aboutBtn.MouseEnter += delegate { aboutBtn.BackColor = Color.FromArgb(226, 226, 226); };
-            aboutBtn.MouseLeave += delegate { aboutBtn.BackColor = TitleBarBack; };
-            aboutBtn.Paint += delegate(object s, PaintEventArgs e)
-            {
-                // 圆圈 + 小写 i（抗锯齿手绘，比字符 ⓘ 在不同字体下更稳定）
-                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                int cx = aboutBtn.Width / 2, cy = aboutBtn.Height / 2;
-                using (Pen p = new Pen(aboutBtn.ForeColor, 1.6F))
-                    e.Graphics.DrawEllipse(p, cx - 6, cy - 6, 12, 12);
-                TextRenderer.DrawText(e.Graphics, "i",
-                    new Font("Segoe UI", 8.5F, FontStyle.Bold),
-                    new Rectangle(cx - 6, cy - 7, 12, 14),
-                    aboutBtn.ForeColor,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-            };
-            titlePanel.Controls.Add(aboutBtn);
-
             // 关闭按钮：hover 红底白线（仿系统）
             closeBtn = new Label();
             closeBtn.Size = new Size(46, 32);
@@ -299,7 +274,6 @@ namespace CNLC
 
             // 悬停提示
             ToolTip tip = new ToolTip();
-            tip.SetToolTip(aboutBtn, "软件简介");
             tip.SetToolTip(minBtn, "最小化到托盘");
             tip.SetToolTip(closeBtn, "退出程序");
             tip.SetToolTip(titleLabel, "按住可拖动窗口");
@@ -563,6 +537,8 @@ namespace CNLC
             miGuard = new ToolStripMenuItem("断网自动重连");
             miGuard.Checked = true;
             miGuard.Click += delegate { SetGuard(!GuardOn); };
+            ToolStripMenuItem miAbout = new ToolStripMenuItem("软件简介");
+            miAbout.Click += delegate { ShowAbout(); };
             ToolStripMenuItem miLogout = new ToolStripMenuItem("注销");
             miLogout.Click += delegate { DoLogout(); };
             ToolStripMenuItem miExit = new ToolStripMenuItem("退出");
@@ -571,6 +547,7 @@ namespace CNLC
             menu.Items.Add(miShow);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(miGuard);
+            menu.Items.Add(miAbout);
             menu.Items.Add(miLogout);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(miExit);
@@ -868,7 +845,7 @@ namespace CNLC
             body.Size = new Size(332, 214);
             aboutForm.Controls.Add(body);
 
-            Label foot = NewLabel("版本 " + AppVersion + "    版权所有 © " + DateTime.Now.Year + " Bro.Cui 保留所有权利", 18, 266);
+            Label foot = NewLabel("版本 " + AppVersion + "    © " + DateTime.Now.Year + " Bro.Cui", 18, 266);
             foot.ForeColor = Color.FromArgb(110, 110, 110);
             aboutForm.Controls.Add(foot);
 
