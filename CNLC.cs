@@ -340,7 +340,7 @@ namespace CNLC
             // "雨课堂网页版"按钮：点击打开雨课堂门户网页，同时最小化主界面到托盘
             btnYuketang = new Button();
             btnYuketang.Text = "雨课堂网页版";
-            btnYuketang.Location = new Point(165, 176);
+            btnYuketang.Location = new Point(165, 178);
             btnYuketang.Size = new Size(115, 26);
 
             loginForm.Controls.Add(lblUser);
@@ -436,6 +436,9 @@ namespace CNLC
             loginForm.Shown += delegate
             {
                 chkAutoLogin.Top = btnYuketang.Top + (btnYuketang.Height - chkAutoLogin.Height) / 2;
+                // 右列上下对齐：按钮与"断网自动重连"复选框同左边缘、同宽度，行距与左列一致
+                btnYuketang.Left = chkGuard.Left;
+                btnYuketang.Width = chkGuard.Width;
                 txtUser.Left = lblUser.Right + 6;
                 txtUser.Width = btnLogin.Left - txtUser.Left - 8;
                 txtPass.Left = lblPass.Right + 6;
