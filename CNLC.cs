@@ -911,6 +911,22 @@ namespace CNLC
             foot.ForeColor = Color.FromArgb(110, 110, 110);
             aboutForm.Controls.Add(foot);
 
+            // 关键：窗体尺寸与正文高度按 DPI 缩放后的实际字体动态计算——
+            // 固定尺寸在不同分辨率/缩放下文字行数不同，会溢出裁切
+            aboutForm.Shown += delegate
+            {
+                int x = body.Left;
+                int inner = aboutForm.ClientSize.Width - x * 2;
+                Size ts = TextRenderer.MeasureText(AboutText, body.Font,
+                    new Size(inner, int.MaxValue),
+                    TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                body.Size = new Size(inner, ts.Height + 6);
+                int rowY = body.Bottom + 12;
+                foot.Location = new Point(x, rowY + (btnUpdate.Height - foot.Height) / 2);
+                btnUpdate.Location = new Point(aboutForm.ClientSize.Width - btnUpdate.Width - x, rowY);
+                aboutForm.ClientSize = new Size(aboutForm.ClientSize.Width, rowY + btnUpdate.Height + 12);
+            };
+
             // 点击窗口内任意处或按任意键关闭（"检查更新"按钮除外——点了它要等结果）
             aboutForm.KeyPreview = true;
             aboutForm.KeyDown += delegate(object s, KeyEventArgs e) { aboutForm.Close(); };
