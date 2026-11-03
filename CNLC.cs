@@ -170,7 +170,7 @@ namespace CNLC
         {
             // 无边框 + 自绘标题条（只有 － 和 ×，无系统 □；最小化悬停提示可自定义）
             loginForm = new Form();
-            loginForm.Text = "校园内网登录器";
+            loginForm.Text = "校园内网登录器（CNLC）";
             loginForm.ClientSize = new Size(320, 212);
             loginForm.FormBorderStyle = FormBorderStyle.None;
             loginForm.StartPosition = FormStartPosition.CenterScreen;
@@ -206,7 +206,7 @@ namespace CNLC
                 }
             };
 
-            titleLabel = NewLabel("校园内网登录器", 32, 8);
+            titleLabel = NewLabel("校园内网登录器（CNLC）", 32, 8);
             titleLabel.ForeColor = Color.FromArgb(40, 40, 40);
             titleLabel.Font = new Font("Microsoft YaHei UI", 9F);
             titlePanel.Controls.Add(titleLabel);
