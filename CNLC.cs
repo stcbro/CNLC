@@ -182,7 +182,10 @@ namespace CNLC
             Bitmap titleBmp = null;
             try
             {
-                using (Icon ti = new Icon(Application.ExecutablePath)) titleBmp = ti.ToBitmap();
+                // app.ico 内部是 PNG 封装条目，.NET Icon 类解析不了（会抛异常），
+                // 必须走 Shell 的 ExtractAssociatedIcon（托盘图标一直正常就是证明）
+                using (Icon ti = Icon.ExtractAssociatedIcon(Application.ExecutablePath))
+                    titleBmp = ti.ToBitmap();
             }
             catch { }
             Bitmap iconForPaint = titleBmp;
