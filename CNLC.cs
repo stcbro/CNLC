@@ -789,7 +789,7 @@ namespace CNLC
 
         private static void ShowLoginResult(string message, bool isError)
         {
-            // 登录结果反馈：显示在登录窗底部内层，宽度=文字+4个字符，3 秒后自动消失
+            // 登录结果反馈：显示在登录窗底部内层，宽度=文字+4个字符，1.5 秒后自动消失
             Form tf = new Form();
             tf.FormBorderStyle = FormBorderStyle.None;
             tf.StartPosition = FormStartPosition.Manual;
@@ -812,7 +812,7 @@ namespace CNLC
                     loginForm.Bottom - tf.Height - 12);
             };
             System.Windows.Forms.Timer t = new System.Windows.Forms.Timer();
-            t.Interval = 3000;
+            t.Interval = 1500;   // 1.5 秒自动消失，不打扰后续操作
             t.Tick += delegate { tf.Close(); };
             t.Start();
             tf.ShowDialog();
