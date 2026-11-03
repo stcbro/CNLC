@@ -2,7 +2,7 @@
 //  CILC-CE - 校园内网登录器
 //  Campus Intranet Login Client (Civil Engineering Custom Edition)
 //  简称：CILC-CE（工程代号 CNLC）
-//  针对沈阳城市学院校园网（1.1.1.3 portal 认证）定制
+//  针对高校校园网（华为 AC Portal 1.1.1.3 认证）环境定制
 //  功能：登录窗口 / 托盘守护 / 断网自动重连 / 记住密码(跨电脑) /
 //        开机自登录(自启动+静默) / 雨课堂网页版快捷入口 / 注销 / 状态窗口
 //  说明：不生成日志与状态文件，保持程序目录干净（状态显示用内存记录）
@@ -37,7 +37,9 @@ namespace CNLC
         private const string RunKeyPath = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
         private const string RunName = "CNLC";
         private const string YuketangUrl = "https://sycu.yuketang.cn/pro/portal/home/";   // 雨课堂网页版入口
-        private const string VersionUrl = "https://gitee.com/stcbro/CNLC/raw/main/version.txt";   // 最新版本号（发版时更新此文件）
+        // 更新检查走 Gitee Release 发布制：只有作者手动创建的 Release 才对用户可见，
+        // main 分支的日常提交不影响用户端
+        private const string ReleaseApiUrl = "https://gitee.com/api/v5/repos/stcbro/CNLC/releases/latest";
         private const string ReleaseUrl = "https://gitee.com/stcbro/CNLC/releases";   // 下载页
 
         // 软件简介（"?"按钮弹出）
@@ -905,25 +907,56 @@ namespace CNLC
 
         // ================= 检查更新 =================
 
-        // 后台线程访问 Gitee 上的 version.txt（不卡 UI），结果回传 UI 线程弹窗
+        // 获取 Gitee 最新 Release 的 tag（如 "v1.3.5"）。
+        // 返回 "" 表示尚无任何发布（视为已是最新）；null 表示网络失败
+        private static string GetLatestReleaseTag()
+        {
+            try
+            {
+                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(ReleaseApiUrl);
+                req.Method = "GET";
+                req.Timeout = 8000;
+                req.ReadWriteTimeout = 8000;
+                req.UserAgent = "Mozilla/5.0";
+                try
+                {
+                    using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
+                    using (StreamReader sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
+                    {
+                        Match m = Regex.Match(sr.ReadToEnd(), "\"tag_name\"\\s*:\\s*\"([^\"]*)\"");
+                        return m.Success ? m.Groups[1].Value : "";
+                    }
+                }
+                catch (WebException we)
+                {
+                    HttpWebResponse err = we.Response as HttpWebResponse;
+                    if (err != null && err.StatusCode == HttpStatusCode.NotFound) return "";   // 仓库还没有任何 Release
+                    return null;
+                }
+            }
+            catch { return null; }
+        }
+
+        // 后台线程查询最新 Release（不卡 UI），结果回传 UI 线程弹窗
         private static void CheckUpdate()
         {
             Form owner = (aboutForm != null && !aboutForm.IsDisposed) ? aboutForm : loginForm;
             if (owner == null || owner.IsDisposed) return;
             System.Threading.Thread t = new System.Threading.Thread(delegate()
             {
-                string remote = HttpGet(VersionUrl, 8);
+                string tag = GetLatestReleaseTag();
                 owner.BeginInvoke(new MethodInvoker(delegate()
                 {
-                    Version rv, lv;
-                    if (remote == null ||
-                        !Version.TryParse(remote.Trim().TrimStart('v', 'V'), out rv) ||
-                        !Version.TryParse(AppVersion, out lv))
+                    Version rv = null, lv = null;
+                    bool ok = tag != null && tag.Length > 0 &&
+                              Version.TryParse(tag.TrimStart('v', 'V'), out rv) &&
+                              Version.TryParse(AppVersion, out lv);
+                    if (tag == null)
                     {
                         MsgOn(owner, "检查更新失败：无法连接更新源，请稍后再试。", "检查更新");
                         return;
                     }
-                    if (rv > lv)
+                    if (ok && rv > lv)
                     {
                         if (MsgOn(owner, "发现新版本 v" + rv + "（当前 v" + lv + "）。\n\n是否打开下载页面？",
                                 "检查更新", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
