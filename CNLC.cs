@@ -37,6 +37,8 @@ namespace CNLC
         private const string RunKeyPath = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
         private const string RunName = "CNLC";
         private const string YuketangUrl = "https://sycu.yuketang.cn/pro/portal/home/";   // 雨课堂网页版入口
+        private const string VersionUrl = "https://gitee.com/stcbro/CNLC/raw/main/version.txt";   // 最新版本号（发版时更新此文件）
+        private const string ReleaseUrl = "https://gitee.com/stcbro/CNLC/releases";   // 下载页
 
         // 软件简介（"?"按钮弹出）
         private const string AboutText =
@@ -92,11 +94,20 @@ namespace CNLC
         // 统一弹窗入口：指定主界面为父窗口。
         // 关键修复：主界面 TopMost=true，无父窗口的 MessageBox 会被压在主界面下层，
         // 同时主界面又被模态框禁用——表现为"程序卡死"（托盘注销确认框曾触发此 bug）
+        private static DialogResult MsgOn(Form owner, string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon)
+        {
+            if (owner != null && !owner.IsDisposed) return MessageBox.Show(owner, text, caption, buttons, icon);
+            return MessageBox.Show(text, caption, buttons, icon);
+        }
+
+        private static DialogResult MsgOn(Form owner, string text, string caption)
+        {
+            return MsgOn(owner, text, caption, MessageBoxButtons.OK, MessageBoxIcon.None);
+        }
+
         private static DialogResult Msg(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon)
         {
-            Form owner = (loginForm != null && !loginForm.IsDisposed) ? loginForm : null;
-            if (owner != null) return MessageBox.Show(owner, text, caption, buttons, icon);
-            return MessageBox.Show(text, caption, buttons, icon);
+            return MsgOn(loginForm, text, caption, buttons, icon);
         }
 
         private static void Msg(string text, string caption)
@@ -861,6 +872,14 @@ namespace CNLC
             aboutForm.Controls.Add(body);
 
             Label foot = NewLabel("版本 " + AppVersion + "    © " + DateTime.Now.Year + " Bro.Cui", 18, 266);
+
+            // 右下角"检查更新"按钮：联网比对 Gitee 上的 version.txt
+            Button btnUpdate = new Button();
+            btnUpdate.Text = "检查更新";
+            btnUpdate.Location = new Point(268, 258);
+            btnUpdate.Size = new Size(84, 26);
+            btnUpdate.Click += delegate { btnUpdate.Enabled = false; CheckUpdate(); };
+            aboutForm.Controls.Add(btnUpdate);
             foot.ForeColor = Color.FromArgb(110, 110, 110);
             aboutForm.Controls.Add(foot);
 
@@ -882,6 +901,44 @@ namespace CNLC
                 aboutForm = null;
             };
             aboutForm.ShowDialog();
+        }
+
+        // ================= 检查更新 =================
+
+        // 后台线程访问 Gitee 上的 version.txt（不卡 UI），结果回传 UI 线程弹窗
+        private static void CheckUpdate()
+        {
+            Form owner = (aboutForm != null && !aboutForm.IsDisposed) ? aboutForm : loginForm;
+            if (owner == null || owner.IsDisposed) return;
+            System.Threading.Thread t = new System.Threading.Thread(delegate()
+            {
+                string remote = HttpGet(VersionUrl, 8);
+                owner.BeginInvoke(new MethodInvoker(delegate()
+                {
+                    Version rv, lv;
+                    if (remote == null ||
+                        !Version.TryParse(remote.Trim().TrimStart('v', 'V'), out rv) ||
+                        !Version.TryParse(AppVersion, out lv))
+                    {
+                        MsgOn(owner, "检查更新失败：无法连接更新源，请稍后再试。", "检查更新");
+                        return;
+                    }
+                    if (rv > lv)
+                    {
+                        if (MsgOn(owner, "发现新版本 v" + rv + "（当前 v" + lv + "）。\n\n是否打开下载页面？",
+                                "检查更新", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                        {
+                            try { System.Diagnostics.Process.Start(ReleaseUrl); } catch { }
+                        }
+                    }
+                    else
+                    {
+                        MsgOn(owner, "当前已是最新版本 v" + lv + "。", "检查更新");
+                    }
+                }));
+            });
+            t.IsBackground = true;
+            t.Start();
         }
 
         // ================= 认证核心 =================
