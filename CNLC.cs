@@ -885,12 +885,13 @@ namespace CNLC
             foot.ForeColor = Color.FromArgb(110, 110, 110);
             aboutForm.Controls.Add(foot);
 
-            // 点击窗口内任意处或按任意键关闭（单实例守卫：FormClosed 清引用）
+            // 点击窗口内任意处或按任意键关闭（"检查更新"按钮除外——点了它要等结果）
             aboutForm.KeyPreview = true;
             aboutForm.KeyDown += delegate(object s, KeyEventArgs e) { aboutForm.Close(); };
             aboutForm.MouseClick += delegate(object s, MouseEventArgs e) { aboutForm.Close(); };
             foreach (Control c in aboutForm.Controls)
-                c.MouseClick += delegate(object s, MouseEventArgs e) { aboutForm.Close(); };
+                if (c != btnUpdate)
+                    c.MouseClick += delegate(object s, MouseEventArgs e) { aboutForm.Close(); };
 
             aboutForm.Paint += delegate(object s, PaintEventArgs e)
             {
