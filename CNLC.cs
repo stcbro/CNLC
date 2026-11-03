@@ -147,7 +147,6 @@ namespace CNLC
         private static Label titleLabel;
         private static Label minBtn;
         private static Label closeBtn;
-        private static bool titleActive = false;
 
         // Windows 个性化强调色（默认 Win10 蓝），失败回退 #0078D7
         private static Color TitleBarColor()
@@ -166,12 +165,11 @@ namespace CNLC
             return Color.FromArgb(0, 120, 215);
         }
 
-        // 激活：强调色底白字；失焦：白底深灰字（仿系统行为）
-        private static void ApplyTitleStyle(bool active)
+        // 标题条固定强调色白字，激活/失焦不再变色
+        private static void ApplyTitleStyle()
         {
-            titleActive = active;
-            Color bg = active ? TitleBarColor() : Color.White;
-            Color fg = active ? Color.White : Color.FromArgb(40, 40, 40);
+            Color bg = TitleBarColor();
+            Color fg = Color.White;
             titlePanel.BackColor = bg;
             titleLabel.ForeColor = fg;
             minBtn.ForeColor = fg;
@@ -200,23 +198,8 @@ namespace CNLC
             titlePanel.Dock = DockStyle.Top;
             titlePanel.Height = 32;
             titlePanel.BackColor = Color.White;
-            Bitmap titleBmp = null;
-            try
-            {
-                using (Icon ti = new Icon(Application.ExecutablePath)) titleBmp = ti.ToBitmap();
-            }
-            catch { }
-            Bitmap iconForPaint = titleBmp;
-            titlePanel.Paint += delegate(object s, PaintEventArgs e)
-            {
-                // 程序图标（缩放为 16×16）；分隔线只在失焦（白底）状态画
-                if (iconForPaint != null) e.Graphics.DrawImage(iconForPaint, 10, 8, 16, 16);
-                if (!titleActive)
-                    e.Graphics.DrawLine(new Pen(Color.FromArgb(225, 225, 225)),
-                        0, titlePanel.Height - 1, titlePanel.Width, titlePanel.Height - 1);
-            };
 
-            titleLabel = NewLabel("校园内网登录器（定制版）", 32, 8);
+            titleLabel = NewLabel("校园内网登录器（定制版）", 12, 8);
             titleLabel.ForeColor = Color.FromArgb(40, 40, 40);
             titleLabel.Font = new Font("Microsoft YaHei UI", 9F);
             titlePanel.Controls.Add(titleLabel);
@@ -231,9 +214,9 @@ namespace CNLC
             minBtn.Click += delegate { EnsureTray(); loginForm.Hide(); };
             minBtn.MouseEnter += delegate
             {
-                minBtn.BackColor = titleActive ? ControlPaint.Light(TitleBarColor(), 0.3f) : Color.FromArgb(229, 229, 229);
+                minBtn.BackColor = ControlPaint.Light(TitleBarColor(), 0.3f);
             };
-            minBtn.MouseLeave += delegate { ApplyTitleStyle(titleActive); };
+            minBtn.MouseLeave += delegate { ApplyTitleStyle(); };
             minBtn.Paint += delegate(object s, PaintEventArgs e)
             {
                 using (Pen p = new Pen(minBtn.ForeColor, 1F))
@@ -253,7 +236,7 @@ namespace CNLC
             closeBtn.Cursor = Cursors.Hand;
             closeBtn.Click += delegate { loginForm.Close(); };
             closeBtn.MouseEnter += delegate { closeBtn.BackColor = Color.FromArgb(232, 17, 35); closeBtn.ForeColor = Color.White; };
-            closeBtn.MouseLeave += delegate { ApplyTitleStyle(titleActive); };
+            closeBtn.MouseLeave += delegate { ApplyTitleStyle(); };
             closeBtn.Paint += delegate(object s, PaintEventArgs e)
             {
                 using (Pen p = new Pen(closeBtn.ForeColor, 1F))
@@ -266,9 +249,8 @@ namespace CNLC
             titlePanel.Controls.Add(closeBtn);
             loginForm.Controls.Add(titlePanel);
 
-            // 窗体激活/失焦时切换标题条颜色（激活=强调色白字，失焦=白底灰字）
-            loginForm.Activated += delegate { ApplyTitleStyle(true); };
-            loginForm.Deactivate += delegate { ApplyTitleStyle(false); };
+            // 标题条固定强调色，不随激活/失焦变化
+            ApplyTitleStyle();
 
             // 窗体外圈细边框（无边框窗体的"系统边框"替代）
             loginForm.Paint += delegate(object s, PaintEventArgs e)
