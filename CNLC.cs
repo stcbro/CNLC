@@ -4,8 +4,8 @@
 //  简称：CILC-CE（工程代号 CNLC）
 //  针对沈阳城市学院校园网（1.1.1.3 portal 认证）定制
 //  功能：登录窗口 / 托盘守护 / 断网自动重连 / 记住密码(跨电脑) /
-//        开机自启动 / 开机自登录(静默) / 注销 / 状态窗口
-//  版本：1.3.1（定制版）
+//        开机自登录(自启动+静默) / 雨课堂网页版快捷入口 / 注销 / 状态窗口
+//  版本：1.3.2（定制版）
 //  作者：Bro.Cui
 //  编译：由 Build-Exe.ps1 调用 Windows 自带的 csc.exe 完成
 // ==================================================================
@@ -25,7 +25,7 @@ namespace CNLC
     internal static class App
     {
         // ---------- 配置常量 ----------
-        internal const string AppVersion = "1.3.1";   // 版本号（仅代码内部使用，不显示在界面）
+        internal const string AppVersion = "1.3.2";   // 版本号（仅代码内部使用，不显示在界面）
         internal const string AppAuthor = "Bro.Cui";  // 作者
         private const string PortalHost = "http://1.1.1.3";
         private const string PortalLoginPage = PortalHost + "/ac_portal/20240318141412/pc.html";
@@ -35,6 +35,7 @@ namespace CNLC
         private const int MaxLoginAttempts = 10;
         private const string RunKeyPath = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
         private const string RunName = "CNLC";
+        private const string YuketangUrl = "https://sycu.yuketang.cn/pro/portal/home/";   // 雨课堂网页版入口
         // 通知总开关：false = 关闭所有弹动提示（浮条/托盘气泡），完全静默，仅写日志
         private static readonly bool ShowNotify = false;
 
@@ -62,11 +63,11 @@ namespace CNLC
         private static TextBox txtPass;
         private static CheckBox chkRemember;
         private static CheckBox chkGuard;
-        private static CheckBox chkAutoStart;
         private static CheckBox chkAutoLogin;
+        private static CheckBox chkYuketang;
         private static bool suppressGuard = false;
-        private static bool suppressAutoStart = false;
         private static bool suppressAutoLogin = false;
+        private static bool suppressYuketang = false;
 
         // 已保存的凭据
         private static string savedUser = "";
@@ -329,15 +330,17 @@ namespace CNLC
             chkGuard.Location = new Point(165, 152);
             chkGuard.AutoSize = true;
 
-            chkAutoStart = new CheckBox();
-            chkAutoStart.Text = "开机自启动";
-            chkAutoStart.Location = new Point(25, 178);
-            chkAutoStart.AutoSize = true;
-
+            // "开机自登录"（合并版）：勾选 = 开机自启动 + 开机静默登录
             chkAutoLogin = new CheckBox();
             chkAutoLogin.Text = "开机自登录";
-            chkAutoLogin.Location = new Point(165, 178);
+            chkAutoLogin.Location = new Point(25, 178);
             chkAutoLogin.AutoSize = true;
+
+            // "雨课堂网页版"：点击即用默认浏览器打开雨课堂门户（动作型入口，勾选后自动回弹）
+            chkYuketang = new CheckBox();
+            chkYuketang.Text = "雨课堂网页版";
+            chkYuketang.Location = new Point(165, 178);
+            chkYuketang.AutoSize = true;
 
             loginForm.Controls.Add(lblUser);
             loginForm.Controls.Add(txtUser);
@@ -347,8 +350,8 @@ namespace CNLC
             loginForm.Controls.Add(btnLogout);
             loginForm.Controls.Add(chkRemember);
             loginForm.Controls.Add(chkGuard);
-            loginForm.Controls.Add(chkAutoStart);
             loginForm.Controls.Add(chkAutoLogin);
+            loginForm.Controls.Add(chkYuketang);
             loginForm.AcceptButton = btnLogin;
 
             // 已记住密码：自动填入并勾选
@@ -358,8 +361,8 @@ namespace CNLC
                 txtPass.Text = savedPass;
                 chkRemember.Checked = true;
             }
-            if (savedAutoLogin) chkAutoLogin.Checked = true;
-            suppressAutoStart = true; chkAutoStart.Checked = AutoStartEnabled(); suppressAutoStart = false;
+            // 开机自登录状态以注册表 Run 项为准（勾选时注册表与凭据文件同步写入，不会失步）
+            suppressAutoLogin = true; chkAutoLogin.Checked = AutoStartEnabled(); suppressAutoLogin = false;
             chkGuard.Checked = true;
 
             btnLogin.Click += delegate { BtnLoginClick(); };
@@ -373,43 +376,56 @@ namespace CNLC
                 else StopGuard();
             };
 
-            chkAutoStart.CheckedChanged += delegate
-            {
-                if (suppressAutoStart) return;
-                try
-                {
-                    SetAutoStart(chkAutoStart.Checked);
-                    Log(chkAutoStart.Checked ? "已开启开机自启动" : "已取消开机自启动");
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("设置开机自启动失败：" + ex.Message, "错误");
-                    suppressAutoStart = true; chkAutoStart.Checked = !chkAutoStart.Checked; suppressAutoStart = false;
-                }
-            };
-
+            // 开机自登录（合并版）：勾选 = 写注册表 Run 项（自启动）+ 凭据文件 autoLogin 标记（静默登录）
             chkAutoLogin.CheckedChanged += delegate
             {
                 if (suppressAutoLogin) return;
-                if (chkAutoLogin.Checked && !File.Exists(CredFile))
+                if (chkAutoLogin.Checked)
                 {
-                    suppressAutoLogin = true; chkAutoLogin.Checked = false; suppressAutoLogin = false;
-                    MessageBox.Show("开机自登录需要先勾选\"记住密码\"保存账号。", "提示");
-                    return;
+                    if (!File.Exists(CredFile))
+                    {
+                        suppressAutoLogin = true; chkAutoLogin.Checked = false; suppressAutoLogin = false;
+                        MessageBox.Show("开机自登录需要先勾选\"记住密码\"并登录一次，保存账号。", "提示");
+                        return;
+                    }
+                    try
+                    {
+                        SetAutoStart(true);
+                        SetAutoLoginFlag(true);
+                        Log("已开启开机自登录（开机自启动并静默登录）");
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show("设置开机自登录失败：" + ex.Message, "错误");
+                        suppressAutoLogin = true; chkAutoLogin.Checked = false; suppressAutoLogin = false;
+                    }
                 }
-                if (File.Exists(CredFile))
+                else
                 {
                     try
                     {
-                        string content = File.ReadAllText(CredFile);
-                        string val = chkAutoLogin.Checked ? "true" : "false";
-                        if (Regex.IsMatch(content, "\"autoLogin\"\\s*:"))
-                            content = Regex.Replace(content, "\"autoLogin\"\\s*:\\s*(true|false)", "\"autoLogin\": " + val);
-                        else
-                            content = content.TrimEnd().TrimEnd('}') + ",\n  \"autoLogin\": " + val + "\n}";
-                        WriteCredFile(content);
-                        Log(chkAutoLogin.Checked ? "已开启开机自登录" : "已关闭开机自登录");}
+                        SetAutoStart(false);
+                        SetAutoLoginFlag(false);
+                    }
                     catch { }
+                    Log("已关闭开机自登录");
+                }
+            };
+
+            // 雨课堂网页版：点击即打开（勾选后立即回弹为未勾选，属动作型入口而非持久设置）
+            chkYuketang.CheckedChanged += delegate
+            {
+                if (suppressYuketang) return;
+                if (!chkYuketang.Checked) return;
+                suppressYuketang = true; chkYuketang.Checked = false; suppressYuketang = false;
+                try
+                {
+                    System.Diagnostics.Process.Start(YuketangUrl);
+                    Log("已打开雨课堂网页版：" + YuketangUrl);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("打开浏览器失败：" + ex.Message, "错误");
                 }
             };
 
@@ -1008,6 +1024,8 @@ namespace CNLC
             else
             {
                 try { File.Delete(CredFile); } catch { }
+                // 取消记住密码：凭据没了，开机自登录同时关闭（注册表 + 勾选状态一起清理）
+                try { SetAutoStart(false); } catch { }
                 suppressAutoLogin = true; chkAutoLogin.Checked = false; suppressAutoLogin = false;
             }
         }
@@ -1027,6 +1045,19 @@ namespace CNLC
                 if (on) key.SetValue(RunName, "\"" + Application.ExecutablePath + "\" -AutoStart");
                 else key.DeleteValue(RunName, false);
             }
+        }
+
+        // 凭据文件中的 autoLogin 标记（开机静默登录开关），与注册表 Run 项配套写入
+        private static void SetAutoLoginFlag(bool on)
+        {
+            if (!File.Exists(CredFile)) return;
+            string content = File.ReadAllText(CredFile);
+            string val = on ? "true" : "false";
+            if (Regex.IsMatch(content, "\"autoLogin\"\\s*:"))
+                content = Regex.Replace(content, "\"autoLogin\"\\s*:\\s*(true|false)", "\"autoLogin\": " + val);
+            else
+                content = content.TrimEnd().TrimEnd('}') + ",\n  \"autoLogin\": " + val + "\n}";
+            WriteCredFile(content);
         }
     }
 }
