@@ -156,49 +156,74 @@ namespace CNLC
             loginForm.AutoScaleDimensions = new SizeF(96F, 96F);
             try { loginForm.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
-            // ---------- 自绘标题条 ----------
+            // ---------- 自绘标题条（仿 Windows 10 原生样式）----------
             Panel tp = new Panel();
             tp.Dock = DockStyle.Top;
-            tp.Height = 30;
+            tp.Height = 32;
             tp.BackColor = Color.White;
+            Icon titleIcon = null;
+            try { titleIcon = new Icon(Application.ExecutablePath, 16, 16); } catch { }
             tp.Paint += delegate(object s, PaintEventArgs e)
             {
-                // 标题条底部分隔线
+                // 程序图标 + 标题条底部分隔线
+                if (titleIcon != null) e.Graphics.DrawIcon(titleIcon, 10, 8);
                 e.Graphics.DrawLine(new Pen(Color.FromArgb(225, 225, 225)),
                     0, tp.Height - 1, tp.Width, tp.Height - 1);
             };
 
-            Label title = NewLabel("校园内网登录器（定制版）", 12, 8);
-            title.ForeColor = Color.FromArgb(60, 60, 60);
+            Label title = NewLabel("校园内网登录器（定制版）", 32, 8);
+            title.ForeColor = Color.FromArgb(40, 40, 40);
+            title.Font = new Font("Microsoft YaHei UI", 9F);
             tp.Controls.Add(title);
 
+            // 最小化按钮：46×32 贴右上，图标为画的水平细线（仿系统）
             Label minBtn = new Label();
-            minBtn.Text = "—";
-            minBtn.Size = new Size(30, 30);
-            minBtn.Location = new Point(260, 0);
-            minBtn.TextAlign = ContentAlignment.MiddleCenter;
-            minBtn.ForeColor = Color.FromArgb(70, 70, 70);
+            minBtn.Size = new Size(46, 32);
+            minBtn.Location = new Point(320 - 92, 0);
+            minBtn.ForeColor = Color.FromArgb(60, 60, 60);
             minBtn.BackColor = Color.White;
             minBtn.Cursor = Cursors.Hand;
             minBtn.Click += delegate { EnsureTray(); loginForm.Hide(); };
-            minBtn.MouseEnter += delegate { minBtn.BackColor = Color.FromArgb(232, 232, 232); };
+            minBtn.MouseEnter += delegate { minBtn.BackColor = Color.FromArgb(229, 229, 229); };
             minBtn.MouseLeave += delegate { minBtn.BackColor = Color.White; };
+            minBtn.Paint += delegate(object s, PaintEventArgs e)
+            {
+                using (Pen p = new Pen(minBtn.ForeColor, 1F))
+                {
+                    int cx = minBtn.Width / 2, cy = minBtn.Height / 2;
+                    e.Graphics.DrawLine(p, cx - 5, cy, cx + 4, cy);
+                }
+            };
             tp.Controls.Add(minBtn);
 
+            // 关闭按钮：hover 红底白线（仿系统）
             Label closeBtn = new Label();
-            closeBtn.Text = "×";
-            closeBtn.Font = new Font(FontFamily.GenericSansSerif, 11, FontStyle.Bold);
-            closeBtn.Size = new Size(30, 30);
-            closeBtn.Location = new Point(290, 0);
-            closeBtn.TextAlign = ContentAlignment.MiddleCenter;
-            closeBtn.ForeColor = Color.FromArgb(70, 70, 70);
+            closeBtn.Size = new Size(46, 32);
+            closeBtn.Location = new Point(320 - 46, 0);
+            closeBtn.ForeColor = Color.FromArgb(60, 60, 60);
             closeBtn.BackColor = Color.White;
             closeBtn.Cursor = Cursors.Hand;
             closeBtn.Click += delegate { loginForm.Close(); };
             closeBtn.MouseEnter += delegate { closeBtn.BackColor = Color.FromArgb(232, 17, 35); closeBtn.ForeColor = Color.White; };
-            closeBtn.MouseLeave += delegate { closeBtn.BackColor = Color.White; closeBtn.ForeColor = Color.FromArgb(70, 70, 70); };
+            closeBtn.MouseLeave += delegate { closeBtn.BackColor = Color.White; closeBtn.ForeColor = Color.FromArgb(60, 60, 60); };
+            closeBtn.Paint += delegate(object s, PaintEventArgs e)
+            {
+                using (Pen p = new Pen(closeBtn.ForeColor, 1F))
+                {
+                    int cx = closeBtn.Width / 2, cy = closeBtn.Height / 2;
+                    e.Graphics.DrawLine(p, cx - 5, cy - 5, cx + 4, cy + 4);
+                    e.Graphics.DrawLine(p, cx + 4, cy - 5, cx - 5, cy + 4);
+                }
+            };
             tp.Controls.Add(closeBtn);
             loginForm.Controls.Add(tp);
+
+            // 窗体外圈细边框（无边框窗体的"系统边框"替代）
+            loginForm.Paint += delegate(object s, PaintEventArgs e)
+            {
+                e.Graphics.DrawRectangle(new Pen(Color.FromArgb(204, 204, 204)),
+                    0, 0, loginForm.ClientSize.Width - 1, loginForm.ClientSize.Height - 1);
+            };
 
             // 悬停提示
             ToolTip tip = new ToolTip();
@@ -237,45 +262,45 @@ namespace CNLC
             title.MouseUp += delegate(object s, MouseEventArgs e) { dragging = false; };
 
             // ---------- 左右分栏：左栏 = 标签+输入框（同一行），右栏 = 登录/注销 ----------
-            Label lblUser = NewLabel("工号:", 20, 64);
+            Label lblUser = NewLabel("工号:", 20, 66);
             txtUser = new TextBox();
-            txtUser.Location = new Point(62, 60);
+            txtUser.Location = new Point(62, 62);
             txtUser.Size = new Size(145, 23);
 
             Button btnLogin = new Button();
             btnLogin.Text = "登 录";
-            btnLogin.Location = new Point(225, 60);
+            btnLogin.Location = new Point(225, 62);
             btnLogin.Size = new Size(72, 26);
 
-            Label lblPass = NewLabel("密码:", 20, 102);
+            Label lblPass = NewLabel("密码:", 20, 104);
             txtPass = new TextBox();
-            txtPass.Location = new Point(62, 98);
+            txtPass.Location = new Point(62, 100);
             txtPass.Size = new Size(145, 23);
             txtPass.PasswordChar = '*';
 
             Button btnLogout = new Button();
             btnLogout.Text = "注 销";
-            btnLogout.Location = new Point(225, 98);
+            btnLogout.Location = new Point(225, 100);
             btnLogout.Size = new Size(72, 26);
 
             chkRemember = new CheckBox();
             chkRemember.Text = "记住密码";
-            chkRemember.Location = new Point(25, 150);
+            chkRemember.Location = new Point(25, 152);
             chkRemember.AutoSize = true;
 
             chkGuard = new CheckBox();
             chkGuard.Text = "断网自动重连";
-            chkGuard.Location = new Point(165, 150);
+            chkGuard.Location = new Point(165, 152);
             chkGuard.AutoSize = true;
 
             chkAutoStart = new CheckBox();
             chkAutoStart.Text = "开机自启动";
-            chkAutoStart.Location = new Point(25, 176);
+            chkAutoStart.Location = new Point(25, 178);
             chkAutoStart.AutoSize = true;
 
             chkAutoLogin = new CheckBox();
             chkAutoLogin.Text = "开机自登录";
-            chkAutoLogin.Location = new Point(165, 176);
+            chkAutoLogin.Location = new Point(165, 178);
             chkAutoLogin.AutoSize = true;
 
             loginForm.Controls.Add(lblUser);
