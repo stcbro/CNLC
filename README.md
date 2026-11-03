@@ -39,27 +39,6 @@
 - **单实例**：Mutex 保证同时只有一个 CNLC 运行
 - **零残留**：不生成任何日志或状态文件，程序目录只有 exe 与凭据文件
 
-## 从源码构建
-
-无需安装任何第三方工具，Windows 自带的 .NET Framework 编译器即可：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Exe.ps1
-```
-
-- 脚本自动定位 `csc.exe`，编译 `CNLC.cs` → `CNLC\CNLC.exe`（嵌入图标）
-- 构建前会自动停止正在运行的 CNLC 进程
-
-## 发布新版本（作者用）
-
-采用 **Release 发布制**：main 分支的日常提交对用户不可见，只有手动创建的 Release 才会被"检查更新"识别。
-
-1. 修改代码，把 `CNLC.cs` 中的 `AppVersion` 升级（如 1.3.4 → 1.3.5），提交推送
-2. 运行 `Build-Exe.ps1` 编译出 `CNLC\CNLC.exe`
-3. 到 Gitee 仓库页 → "创建发布"→ 填写 tag（如 `v1.3.5`）→ 上传 `CNLC.exe` → 发布
-
-完成后，用户端"检查更新"即可发现新版。删除某个 Release 即可撤回该版本的更新提示。
-
 ## 文件说明
 
 | 文件 | 作用 |
