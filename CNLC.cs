@@ -150,8 +150,19 @@ namespace CNLC
             loginForm.FormBorderStyle = FormBorderStyle.FixedSingle;
             loginForm.StartPosition = FormStartPosition.CenterScreen;
             loginForm.MaximizeBox = false;
-            loginForm.MinimizeBox = false;   // 标题栏只留 ×（最小化/最大化没用，程序就是进托盘的）
+            loginForm.MinimizeBox = true;    // 最小化按钮：点击后隐藏到托盘（不是任务栏）
             loginForm.TopMost = true;
+            loginForm.ShowInTaskbar = false; // 最小化到托盘时任务栏不留图标
+            // 拦截最小化动作：窗口隐藏进托盘，通过托盘菜单"显示主界面"唤回
+            loginForm.Resize += delegate
+            {
+                if (loginForm.WindowState == FormWindowState.Minimized)
+                {
+                    EnsureTray();
+                    loginForm.Hide();
+                    loginForm.WindowState = FormWindowState.Normal;
+                }
+            };
             // DPI 缩放适配：坐标按系统缩放自动放大，高分屏下大小正常、文字清晰
             loginForm.AutoScaleMode = AutoScaleMode.Dpi;
             loginForm.AutoScaleDimensions = new SizeF(96F, 96F);
@@ -342,10 +353,17 @@ namespace CNLC
             tray = new NotifyIcon();
             try { tray.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
             catch { tray.Icon = SystemIcons.Shield; }
-            tray.Text = "校园内网登录器 - " + portalUser + "（每 " + CheckIntervalSec + "s 检测）";
+            tray.Text = "校园内网登录器" + (portalUser.Length > 0 ? " - " + portalUser : "") + "（每 " + CheckIntervalSec + "s 检测）";
             tray.Visible = true;
 
             ContextMenuStrip menu = new ContextMenuStrip();
+            ToolStripMenuItem miShow = new ToolStripMenuItem("显示主界面");
+            miShow.Font = new Font(miShow.Font, FontStyle.Bold);
+            miShow.Click += delegate
+            {
+                loginForm.Show();
+                loginForm.Activate();
+            };
             miGuard = new ToolStripMenuItem("断网自动重连");
             miGuard.Checked = true;
             miGuard.Click += delegate { SetGuard(!GuardOn); };
@@ -367,6 +385,8 @@ namespace CNLC
             ToolStripMenuItem miExit = new ToolStripMenuItem("退出");
             miExit.Click += delegate { ExitApp(); };
 
+            menu.Items.Add(miShow);
+            menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(miGuard);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(miSwitch);
