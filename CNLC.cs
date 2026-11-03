@@ -179,8 +179,20 @@ namespace CNLC
             titlePanel.Dock = DockStyle.Top;
             titlePanel.Height = 32;
             titlePanel.BackColor = Color.White;
+            Bitmap titleBmp = null;
+            try
+            {
+                using (Icon ti = new Icon(Application.ExecutablePath)) titleBmp = ti.ToBitmap();
+            }
+            catch { }
+            Bitmap iconForPaint = titleBmp;
+            titlePanel.Paint += delegate(object s, PaintEventArgs e)
+            {
+                // 程序图标（缩放为 16×16）
+                if (iconForPaint != null) e.Graphics.DrawImage(iconForPaint, 10, 8, 16, 16);
+            };
 
-            titleLabel = NewLabel("校园内网登录器（定制版）", 12, 8);
+            titleLabel = NewLabel("校园内网登录器（定制版）", 32, 8);
             titleLabel.ForeColor = Color.FromArgb(40, 40, 40);
             titleLabel.Font = new Font("Microsoft YaHei UI", 9F);
             titlePanel.Controls.Add(titleLabel);
