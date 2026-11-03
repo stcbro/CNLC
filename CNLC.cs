@@ -148,15 +148,17 @@ namespace CNLC
         private static Label minBtn;
         private static Label closeBtn;
 
-        // 标题条固定白底深灰字，激活/失焦不变
+        // 标题条固定浅浅蓝底（比主界面白底稍深一档），激活/失焦不变
+        private static readonly Color TitleBarBack = Color.FromArgb(233, 242, 252);
+
         private static void ApplyTitleStyle()
         {
-            titlePanel.BackColor = Color.White;
+            titlePanel.BackColor = TitleBarBack;
             titleLabel.ForeColor = Color.FromArgb(40, 40, 40);
             minBtn.ForeColor = Color.FromArgb(60, 60, 60);
-            minBtn.BackColor = Color.White;
+            minBtn.BackColor = TitleBarBack;
             closeBtn.ForeColor = Color.FromArgb(60, 60, 60);
-            closeBtn.BackColor = Color.White;
+            closeBtn.BackColor = TitleBarBack;
             titlePanel.Invalidate();
         }
 
@@ -178,7 +180,7 @@ namespace CNLC
             titlePanel = new Panel();
             titlePanel.Dock = DockStyle.Top;
             titlePanel.Height = 32;
-            titlePanel.BackColor = Color.White;
+            titlePanel.BackColor = TitleBarBack;
             Bitmap titleBmp = null;
             try
             {
@@ -191,8 +193,13 @@ namespace CNLC
             Bitmap iconForPaint = titleBmp;
             titlePanel.Paint += delegate(object s, PaintEventArgs e)
             {
-                // 程序图标（缩放为 16×16）
-                if (iconForPaint != null) e.Graphics.DrawImage(iconForPaint, 10, 8, 16, 16);
+                // 程序图标（缩放为 16×16，高质量插值避免发糊）
+                if (iconForPaint != null)
+                {
+                    e.Graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    e.Graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+                    e.Graphics.DrawImage(iconForPaint, 10, 8, 16, 16);
+                }
             };
 
             titleLabel = NewLabel("校园内网登录器（定制版）", 32, 8);
@@ -205,10 +212,10 @@ namespace CNLC
             minBtn.Size = new Size(46, 32);
             minBtn.Location = new Point(320 - 92, 0);
             minBtn.ForeColor = Color.FromArgb(60, 60, 60);
-            minBtn.BackColor = Color.White;
+            minBtn.BackColor = TitleBarBack;
             minBtn.Cursor = Cursors.Hand;
             minBtn.Click += delegate { EnsureTray(); loginForm.Hide(); };
-            minBtn.MouseEnter += delegate { minBtn.BackColor = Color.FromArgb(229, 229, 229); };
+            minBtn.MouseEnter += delegate { minBtn.BackColor = Color.FromArgb(215, 231, 247); };
             minBtn.MouseLeave += delegate { ApplyTitleStyle(); };
             minBtn.Paint += delegate(object s, PaintEventArgs e)
             {
@@ -225,7 +232,7 @@ namespace CNLC
             closeBtn.Size = new Size(46, 32);
             closeBtn.Location = new Point(320 - 46, 0);
             closeBtn.ForeColor = Color.FromArgb(60, 60, 60);
-            closeBtn.BackColor = Color.White;
+            closeBtn.BackColor = TitleBarBack;
             closeBtn.Cursor = Cursors.Hand;
             closeBtn.Click += delegate { loginForm.Close(); };
             closeBtn.MouseEnter += delegate { closeBtn.BackColor = Color.FromArgb(232, 17, 35); closeBtn.ForeColor = Color.White; };
