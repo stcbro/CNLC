@@ -135,6 +135,13 @@ namespace CNLC
             try
             {
                 if (_uiCtx != null) { _uiCtx.Post(delegate { try { mi(); } catch { } }, null); return; }
+                // 兜底：上下文缺失时改用控件句柄投递，严禁在后台线程直接执行 UI 操作
+                // （NotifyIcon/Timer/控件跨线程访问都会静默失效或异常）
+                if (loginForm != null && !loginForm.IsDisposed)
+                {
+                    loginForm.BeginInvoke((MethodInvoker)delegate { try { mi(); } catch { } });
+                    return;
+                }
             }
             catch { }
             try { mi(); } catch { }
@@ -208,6 +215,12 @@ namespace CNLC
 
             LoadCreds();
             BuildLoginForm();
+
+            // 关键修复：WinForms 同步上下文是在第一个控件创建时才安装的（Control 构造函数内部
+            // InstallIfNeeded），而 Main 开头捕获时还没创建任何控件，_uiCtx 为 null——
+            // 导致 Ui() 全部退化为"后台线程直接执行"：NotifyIcon 在无消息泵的线程创建（托盘不显示）、
+            // WinForms Timer 在后台线程启动（Tick 永不触发），表现为登录后托盘消失、守护失效
+            _uiCtx = System.Threading.SynchronizationContext.Current;
 
             if (autoStart && savedUser.Length > 0 && savedPass.Length > 0 && savedAutoLogin)
             {
