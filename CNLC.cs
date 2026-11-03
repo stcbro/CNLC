@@ -77,6 +77,10 @@ namespace CNLC
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool SetProcessDPIAware();
 
+        // 查询物理按键全局按下状态（用于状态窗"屏幕任意点击/按键即关闭"）
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+
         [STAThread]
         private static void Main(string[] args)
         {
@@ -730,12 +734,26 @@ namespace CNLC
                 y += 22;
             }
 
-            // 任意点击（左键/右键）或键盘输入即自动关闭
-            statusForm.KeyPreview = true;   // 键盘事件先由窗体统一接收（Label 不可聚焦也能捕获）
-            statusForm.KeyDown += delegate(object s, KeyEventArgs e) { statusForm.Close(); };
-            statusForm.MouseClick += delegate(object s, MouseEventArgs e) { statusForm.Close(); };
-            foreach (Control c in statusForm.Controls)
-                c.MouseClick += delegate(object s, MouseEventArgs e) { statusForm.Close(); };
+            // 屏幕上任意位置点击鼠标或按任意键即自动关闭：
+            // 用 GetAsyncKeyState 轮询物理按键状态（全局生效，不限本窗口内）
+            System.Windows.Forms.Timer closeTimer = new System.Windows.Forms.Timer();
+            closeTimer.Interval = 100;
+            closeTimer.Tick += delegate
+            {
+                if (statusForm == null || statusForm.IsDisposed) { closeTimer.Stop(); return; }
+                bool pressed = (GetAsyncKeyState(0x01) & 0x8000) != 0    // 鼠标左键
+                            || (GetAsyncKeyState(0x02) & 0x8000) != 0    // 鼠标右键
+                            || (GetAsyncKeyState(0x04) & 0x8000) != 0;   // 鼠标中键
+                if (!pressed)
+                {
+                    for (int vk = 0x08; vk <= 0xFE; vk++)   // Backspace 起的全部键盘键
+                    {
+                        if ((GetAsyncKeyState(vk) & 0x8000) != 0) { pressed = true; break; }
+                    }
+                }
+                if (pressed) statusForm.Close();
+            };
+            closeTimer.Start();
 
             // 无边框窗体手动画一圈细边框，避免和白背景融在一起
             statusForm.Paint += delegate(object s, PaintEventArgs e)
@@ -748,6 +766,8 @@ namespace CNLC
             // 若不清理引用，下次左键会被单实例守卫误判为"已打开"而只 Activate（无反应）
             statusForm.FormClosed += delegate
             {
+                closeTimer.Stop();
+                try { closeTimer.Dispose(); } catch { }
                 try { statusForm.Dispose(); } catch { }
                 statusForm = null;
             };
