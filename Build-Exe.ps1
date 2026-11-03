@@ -2,13 +2,13 @@
 #  Build-Exe.ps1 - Compile CNLC.cs into a single-file exe
 #  Usage:
 #    powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Exe.ps1
-#  Output: dist\CNLC.exe  (uses the built-in .NET Framework compiler,
+#  Output: CILC\CNLC.exe  (uses the built-in .NET Framework compiler,
 #          no third-party packer -> far fewer antivirus false positives)
 # ============================================================
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
-$dist = Join-Path $root 'dist'
+$dist = Join-Path $root 'CILC'
 if (-not (Test-Path $dist)) { New-Item -ItemType Directory -Path $dist | Out-Null }
 
 # 1) Locate the .NET Framework C# compiler that ships with Windows

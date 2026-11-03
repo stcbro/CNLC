@@ -1,11 +1,11 @@
 // ==================================================================
-//  CILC-CE - 校园内网登录器（土木定制版）
+//  CILC-CE - 校园内网登录器
 //  Campus Intranet Login Client (Civil Engineering Custom Edition)
 //  简称：CILC-CE（工程代号 CNLC）
 //  针对沈阳城市学院校园网（1.1.1.3 portal 认证）定制
 //  功能：登录窗口 / 托盘守护 / 断网自动重连 / 记住密码(跨电脑) /
 //        开机自登录(自启动+静默) / 雨课堂网页版快捷入口 / 注销 / 状态窗口
-//  版本：1.3.2（定制版）
+//  版本：1.3.3
 //  作者：Bro.Cui
 //  编译：由 Build-Exe.ps1 调用 Windows 自带的 csc.exe 完成
 // ==================================================================
@@ -25,7 +25,7 @@ namespace CNLC
     internal static class App
     {
         // ---------- 配置常量 ----------
-        internal const string AppVersion = "1.3.2";   // 版本号（仅代码内部使用，不显示在界面）
+        internal const string AppVersion = "1.3.3";   // 版本号（仅代码内部使用，不显示在界面）
         internal const string AppAuthor = "Bro.Cui";  // 作者
         private const string PortalHost = "http://1.1.1.3";
         private const string PortalLoginPage = PortalHost + "/ac_portal/20240318141412/pc.html";
@@ -64,10 +64,9 @@ namespace CNLC
         private static CheckBox chkRemember;
         private static CheckBox chkGuard;
         private static CheckBox chkAutoLogin;
-        private static CheckBox chkYuketang;
+        private static Button btnYuketang;
         private static bool suppressGuard = false;
         private static bool suppressAutoLogin = false;
-        private static bool suppressYuketang = false;
 
         // 已保存的凭据
         private static string savedUser = "";
@@ -105,7 +104,7 @@ namespace CNLC
             }
             if (!createdNew)
             {
-                MessageBox.Show("校园内网登录器（土木定制版）已在运行（右下角托盘图标）。\n\n如需切换账号，请先右键托盘图标退出，再重新启动。", "提示");
+                MessageBox.Show("校园内网登录器已在运行（右下角托盘图标）。\n\n如需切换账号，请先右键托盘图标退出，再重新启动。", "提示");
                 return;
             }
 
@@ -169,7 +168,7 @@ namespace CNLC
         {
             // 无边框 + 自绘标题条（只有 － 和 ×，无系统 □；最小化悬停提示可自定义）
             loginForm = new Form();
-            loginForm.Text = "校园内网登录器（土木定制版）";
+            loginForm.Text = "校园内网登录器";
             loginForm.ClientSize = new Size(320, 212);
             loginForm.FormBorderStyle = FormBorderStyle.None;
             loginForm.StartPosition = FormStartPosition.CenterScreen;
@@ -205,7 +204,7 @@ namespace CNLC
                 }
             };
 
-            titleLabel = NewLabel("校园内网登录器（土木定制版）", 32, 8);
+            titleLabel = NewLabel("校园内网登录器", 32, 8);
             titleLabel.ForeColor = Color.FromArgb(40, 40, 40);
             titleLabel.Font = new Font("Microsoft YaHei UI", 9F);
             titlePanel.Controls.Add(titleLabel);
@@ -336,11 +335,11 @@ namespace CNLC
             chkAutoLogin.Location = new Point(25, 178);
             chkAutoLogin.AutoSize = true;
 
-            // "雨课堂网页版"：点击即用默认浏览器打开雨课堂门户（动作型入口，勾选后自动回弹）
-            chkYuketang = new CheckBox();
-            chkYuketang.Text = "雨课堂网页版";
-            chkYuketang.Location = new Point(165, 178);
-            chkYuketang.AutoSize = true;
+            // "雨课堂网页版"按钮：点击打开雨课堂门户网页，同时最小化主界面到托盘
+            btnYuketang = new Button();
+            btnYuketang.Text = "雨课堂网页版";
+            btnYuketang.Location = new Point(165, 176);
+            btnYuketang.Size = new Size(115, 26);
 
             loginForm.Controls.Add(lblUser);
             loginForm.Controls.Add(txtUser);
@@ -351,7 +350,7 @@ namespace CNLC
             loginForm.Controls.Add(chkRemember);
             loginForm.Controls.Add(chkGuard);
             loginForm.Controls.Add(chkAutoLogin);
-            loginForm.Controls.Add(chkYuketang);
+            loginForm.Controls.Add(btnYuketang);
             loginForm.AcceptButton = btnLogin;
 
             // 已记住密码：自动填入并勾选
@@ -412,12 +411,9 @@ namespace CNLC
                 }
             };
 
-            // 雨课堂网页版：点击即打开（勾选后立即回弹为未勾选，属动作型入口而非持久设置）
-            chkYuketang.CheckedChanged += delegate
+            // 雨课堂网页版：打开门户网页，同时把主界面最小化到托盘
+            btnYuketang.Click += delegate
             {
-                if (suppressYuketang) return;
-                if (!chkYuketang.Checked) return;
-                suppressYuketang = true; chkYuketang.Checked = false; suppressYuketang = false;
                 try
                 {
                     System.Diagnostics.Process.Start(YuketangUrl);
@@ -427,6 +423,8 @@ namespace CNLC
                 {
                     MessageBox.Show("打开浏览器失败：" + ex.Message, "错误");
                 }
+                EnsureTray();
+                loginForm.Hide();
             };
 
             loginForm.FormClosed += delegate { ExitApp(); };
@@ -490,7 +488,7 @@ namespace CNLC
         {
             if (tray != null) return;
 
-            Log("校园内网登录器（土木定制版）已启动（托盘守护）");
+            Log("校园内网登录器已启动（托盘守护）");
             Log("版本: " + AppVersion + "   作者: " + AppAuthor);
             Log("账号: " + portalUser + "   检测间隔: " + CheckIntervalSec + "s");
             Log("目标服务器: " + PortalHost + "   登录接口: " + PortalLoginApi);
@@ -814,7 +812,7 @@ namespace CNLC
             if (tray == null) return;
             try
             {
-                tray.ShowBalloonTip(4000, "校园内网登录器（土木定制版）", message,
+                tray.ShowBalloonTip(4000, "校园内网登录器", message,
                     warning ? ToolTipIcon.Warning : ToolTipIcon.Info);
             }
             catch { }
