@@ -9,9 +9,9 @@ auto_login_status.txt
 credentials.txt
 credentials.bak
 CNLC.dat
-CILC/credentials.txt
-CILC/credentials.bak
-CILC/CNLC.dat
+CNLC/credentials.txt
+CNLC/credentials.bak
+CNLC/CNLC.dat
 
 # 构建中间产物
 dist/AutoLogin_merged.ps1

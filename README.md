@@ -1,7 +1,7 @@
 # 校园内网登录器
 
 **中文名**：校园内网登录器
-**英文名**：Campus Intranet Login Client，简称 **CILC**
+**英文名**：Campus Network Login Client，简称 **CNLC**
 
 > 检测到断网后，自动执行 portal 认证登录，保持网络持续在线。
 > 针对沈阳城市学院校园网（1.1.1.3 portal 认证）定制。
@@ -13,7 +13,7 @@
 
 ## 快速开始
 
-1. 双击运行 **`CILC\CNLC.exe`**（单文件，约 39 KB，带图标）。
+1. 双击运行 **`CNLC\CNLC.exe`**（单文件，约 39 KB，带图标）。
 2. 首次运行弹出登录窗口，输入**工号**和密码，点击**登录**：
 
 ```
@@ -68,7 +68,7 @@
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Exe.ps1
 ```
 
-- 脚本自动定位 `csc.exe`，编译 `CNLC.cs` → `CILC\CNLC.exe`（嵌入图标）
+- 脚本自动定位 `csc.exe`，编译 `CNLC.cs` → `CNLC\CNLC.exe`（嵌入图标）
 - 构建前会自动停止正在运行的 CNLC 进程
 
 ## 文件说明
@@ -79,9 +79,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Exe.ps1
 | `Build-Exe.ps1` | 构建脚本（csc.exe 编译） |
 | `app.ico` | 程序图标（由 make_icon.ps1 生成） |
 | `make_icon.ps1` | 图标生成脚本（GDI+ 绘制） |
-| `CILC\CNLC.exe` | 编译产物（单文件可携带） |
-| `CILC\CNLC.dat` | 记住密码凭据（运行时生成，隐藏文件） |
-| `CILC\logs\` | 日志目录（运行时生成） |
+| `CNLC\CNLC.exe` | 编译产物（单文件可携带） |
+| `CNLC\CNLC.dat` | 记住密码凭据（运行时生成，隐藏文件） |
+| `CNLC\logs\` | 日志目录（运行时生成） |
 
 > 早期 PowerShell 版本的脚本（Config.ps1 / AutoLogin.ps1 等）已移除，如需查阅请看 git 提交历史（`2951fe2`）。
 
