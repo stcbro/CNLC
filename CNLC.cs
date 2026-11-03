@@ -142,6 +142,45 @@ namespace CNLC
             return l;
         }
 
+        // ---------- 自绘标题条状态 ----------
+        private static Panel titlePanel;
+        private static Label titleLabel;
+        private static Label minBtn;
+        private static Label closeBtn;
+        private static bool titleActive = false;
+
+        // Windows 个性化强调色（默认 Win10 蓝），失败回退 #0078D7
+        private static Color TitleBarColor()
+        {
+            try
+            {
+                object v = Microsoft.Win32.Registry.GetValue(
+                    @"HKEY_CURRENT_USER\Software\Microsoft\Windows\DWM", "AccentColor", null);
+                if (v is int)
+                {
+                    int c = (int)v;   // 存储格式 0xAABBGGRR
+                    return Color.FromArgb(255, (c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
+                }
+            }
+            catch { }
+            return Color.FromArgb(0, 120, 215);
+        }
+
+        // 激活：强调色底白字；失焦：白底深灰字（仿系统行为）
+        private static void ApplyTitleStyle(bool active)
+        {
+            titleActive = active;
+            Color bg = active ? TitleBarColor() : Color.White;
+            Color fg = active ? Color.White : Color.FromArgb(40, 40, 40);
+            titlePanel.BackColor = bg;
+            titleLabel.ForeColor = fg;
+            minBtn.ForeColor = fg;
+            minBtn.BackColor = bg;
+            closeBtn.ForeColor = fg;
+            closeBtn.BackColor = bg;
+            titlePanel.Invalidate();
+        }
+
         private static void BuildLoginForm()
         {
             // 无边框 + 自绘标题条（只有 － 和 ×，无系统 □；最小化悬停提示可自定义）
@@ -157,35 +196,40 @@ namespace CNLC
             try { loginForm.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
             // ---------- 自绘标题条（仿 Windows 10 原生样式）----------
-            Panel tp = new Panel();
-            tp.Dock = DockStyle.Top;
-            tp.Height = 32;
-            tp.BackColor = Color.White;
+            titlePanel = new Panel();
+            titlePanel.Dock = DockStyle.Top;
+            titlePanel.Height = 32;
+            titlePanel.BackColor = Color.White;
             Icon titleIcon = null;
             try { titleIcon = new Icon(Application.ExecutablePath, 16, 16); } catch { }
-            tp.Paint += delegate(object s, PaintEventArgs e)
+            Icon iconForPaint = titleIcon;
+            titlePanel.Paint += delegate(object s, PaintEventArgs e)
             {
-                // 程序图标 + 标题条底部分隔线
-                if (titleIcon != null) e.Graphics.DrawIcon(titleIcon, 10, 8);
-                e.Graphics.DrawLine(new Pen(Color.FromArgb(225, 225, 225)),
-                    0, tp.Height - 1, tp.Width, tp.Height - 1);
+                // 程序图标；分隔线只在失焦（白底）状态画
+                if (iconForPaint != null) e.Graphics.DrawIcon(iconForPaint, 10, 8);
+                if (!titleActive)
+                    e.Graphics.DrawLine(new Pen(Color.FromArgb(225, 225, 225)),
+                        0, titlePanel.Height - 1, titlePanel.Width, titlePanel.Height - 1);
             };
 
-            Label title = NewLabel("校园内网登录器（定制版）", 32, 8);
-            title.ForeColor = Color.FromArgb(40, 40, 40);
-            title.Font = new Font("Microsoft YaHei UI", 9F);
-            tp.Controls.Add(title);
+            titleLabel = NewLabel("校园内网登录器（定制版）", 32, 8);
+            titleLabel.ForeColor = Color.FromArgb(40, 40, 40);
+            titleLabel.Font = new Font("Microsoft YaHei UI", 9F);
+            titlePanel.Controls.Add(titleLabel);
 
             // 最小化按钮：46×32 贴右上，图标为画的水平细线（仿系统）
-            Label minBtn = new Label();
+            minBtn = new Label();
             minBtn.Size = new Size(46, 32);
             minBtn.Location = new Point(320 - 92, 0);
             minBtn.ForeColor = Color.FromArgb(60, 60, 60);
             minBtn.BackColor = Color.White;
             minBtn.Cursor = Cursors.Hand;
             minBtn.Click += delegate { EnsureTray(); loginForm.Hide(); };
-            minBtn.MouseEnter += delegate { minBtn.BackColor = Color.FromArgb(229, 229, 229); };
-            minBtn.MouseLeave += delegate { minBtn.BackColor = Color.White; };
+            minBtn.MouseEnter += delegate
+            {
+                minBtn.BackColor = titleActive ? ControlPaint.Light(TitleBarColor(), 0.3f) : Color.FromArgb(229, 229, 229);
+            };
+            minBtn.MouseLeave += delegate { ApplyTitleStyle(titleActive); };
             minBtn.Paint += delegate(object s, PaintEventArgs e)
             {
                 using (Pen p = new Pen(minBtn.ForeColor, 1F))
@@ -194,10 +238,10 @@ namespace CNLC
                     e.Graphics.DrawLine(p, cx - 5, cy, cx + 4, cy);
                 }
             };
-            tp.Controls.Add(minBtn);
+            titlePanel.Controls.Add(minBtn);
 
             // 关闭按钮：hover 红底白线（仿系统）
-            Label closeBtn = new Label();
+            closeBtn = new Label();
             closeBtn.Size = new Size(46, 32);
             closeBtn.Location = new Point(320 - 46, 0);
             closeBtn.ForeColor = Color.FromArgb(60, 60, 60);
@@ -205,7 +249,7 @@ namespace CNLC
             closeBtn.Cursor = Cursors.Hand;
             closeBtn.Click += delegate { loginForm.Close(); };
             closeBtn.MouseEnter += delegate { closeBtn.BackColor = Color.FromArgb(232, 17, 35); closeBtn.ForeColor = Color.White; };
-            closeBtn.MouseLeave += delegate { closeBtn.BackColor = Color.White; closeBtn.ForeColor = Color.FromArgb(60, 60, 60); };
+            closeBtn.MouseLeave += delegate { ApplyTitleStyle(titleActive); };
             closeBtn.Paint += delegate(object s, PaintEventArgs e)
             {
                 using (Pen p = new Pen(closeBtn.ForeColor, 1F))
@@ -215,8 +259,12 @@ namespace CNLC
                     e.Graphics.DrawLine(p, cx + 4, cy - 5, cx - 5, cy + 4);
                 }
             };
-            tp.Controls.Add(closeBtn);
-            loginForm.Controls.Add(tp);
+            titlePanel.Controls.Add(closeBtn);
+            loginForm.Controls.Add(titlePanel);
+
+            // 窗体激活/失焦时切换标题条颜色（激活=强调色白字，失焦=白底灰字）
+            loginForm.Activated += delegate { ApplyTitleStyle(true); };
+            loginForm.Deactivate += delegate { ApplyTitleStyle(false); };
 
             // 窗体外圈细边框（无边框窗体的"系统边框"替代）
             loginForm.Paint += delegate(object s, PaintEventArgs e)
@@ -229,16 +277,16 @@ namespace CNLC
             ToolTip tip = new ToolTip();
             tip.SetToolTip(minBtn, "最小化到托盘");
             tip.SetToolTip(closeBtn, "退出程序");
-            tip.SetToolTip(title, "按住可拖动窗口");
+            tip.SetToolTip(titleLabel, "按住可拖动窗口");
 
             // 按住标题条拖动窗口
             bool dragging = false;
             Point dragCursor = Point.Empty, dragForm = Point.Empty;
-            tp.MouseDown += delegate(object s, MouseEventArgs e)
+            titlePanel.MouseDown += delegate(object s, MouseEventArgs e)
             {
                 if (e.Button == MouseButtons.Left) { dragging = true; dragCursor = Cursor.Position; dragForm = loginForm.Location; }
             };
-            tp.MouseMove += delegate(object s, MouseEventArgs e)
+            titlePanel.MouseMove += delegate(object s, MouseEventArgs e)
             {
                 if (dragging)
                 {
@@ -246,12 +294,12 @@ namespace CNLC
                     loginForm.Location = Point.Add(dragForm, (Size)d);
                 }
             };
-            tp.MouseUp += delegate(object s, MouseEventArgs e) { dragging = false; };
-            title.MouseDown += delegate(object s, MouseEventArgs e)
+            titlePanel.MouseUp += delegate(object s, MouseEventArgs e) { dragging = false; };
+            titleLabel.MouseDown += delegate(object s, MouseEventArgs e)
             {
                 if (e.Button == MouseButtons.Left) { dragging = true; dragCursor = Cursor.Position; dragForm = loginForm.Location; }
             };
-            title.MouseMove += delegate(object s, MouseEventArgs e)
+            titleLabel.MouseMove += delegate(object s, MouseEventArgs e)
             {
                 if (dragging)
                 {
@@ -259,7 +307,7 @@ namespace CNLC
                     loginForm.Location = Point.Add(dragForm, (Size)d);
                 }
             };
-            title.MouseUp += delegate(object s, MouseEventArgs e) { dragging = false; };
+            titleLabel.MouseUp += delegate(object s, MouseEventArgs e) { dragging = false; };
 
             // ---------- 左右分栏：左栏 = 标签+输入框（同一行），右栏 = 登录/注销 ----------
             Label lblUser = NewLabel("工号:", 20, 66);
