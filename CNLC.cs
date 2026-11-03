@@ -75,13 +75,6 @@ namespace CNLC
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool SetProcessDPIAware();
 
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-
         [STAThread]
         private static void Main(string[] args)
         {
@@ -151,73 +144,138 @@ namespace CNLC
 
         private static void BuildLoginForm()
         {
+            // 无边框 + 自绘标题条（只有 － 和 ×，无系统 □；最小化悬停提示可自定义）
             loginForm = new Form();
             loginForm.Text = "校园内网登录器（定制版）";
-            loginForm.ClientSize = new Size(320, 182);
-            loginForm.FormBorderStyle = FormBorderStyle.FixedSingle;
+            loginForm.ClientSize = new Size(320, 212);
+            loginForm.FormBorderStyle = FormBorderStyle.None;
             loginForm.StartPosition = FormStartPosition.CenterScreen;
-            loginForm.MaximizeBox = false;
-            loginForm.MinimizeBox = true;    // 最小化按钮：点击后隐藏到托盘（不是任务栏）
             loginForm.TopMost = true;
-            loginForm.ShowInTaskbar = false; // 最小化到托盘时任务栏不留图标
-            // 彻底移除标题栏的最大化按钮（□）：清除 WS_MAXIMIZEBOX 后强制重绘非客户区
-            // （Windows DWM 即使无该样式也会画禁用态□，必须发 SWP_FRAMECHANGED 才会消失）
-            loginForm.Shown += delegate { RemoveMaximizeBox(); };
-            // 拦截最小化动作：窗口隐藏进托盘，通过托盘菜单"显示主界面"唤回
-            loginForm.Resize += delegate
-            {
-                if (loginForm.WindowState == FormWindowState.Minimized)
-                {
-                    EnsureTray();
-                    loginForm.Hide();
-                    loginForm.WindowState = FormWindowState.Normal;
-                }
-            };
-            // DPI 缩放适配：坐标按系统缩放自动放大，高分屏下大小正常、文字清晰
+            loginForm.ShowInTaskbar = false;   // 纯托盘程序，任务栏不留图标
             loginForm.AutoScaleMode = AutoScaleMode.Dpi;
             loginForm.AutoScaleDimensions = new SizeF(96F, 96F);
             try { loginForm.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
-            // 左右分栏：左栏 = 标签+输入框（同一行），右栏 = 登录/注销上下排列
-            Label lblUser = NewLabel("工号:", 20, 34);
+            // ---------- 自绘标题条 ----------
+            Panel tp = new Panel();
+            tp.Dock = DockStyle.Top;
+            tp.Height = 30;
+            tp.BackColor = Color.White;
+            tp.Paint += delegate(object s, PaintEventArgs e)
+            {
+                // 标题条底部分隔线
+                e.Graphics.DrawLine(new Pen(Color.FromArgb(225, 225, 225)),
+                    0, tp.Height - 1, tp.Width, tp.Height - 1);
+            };
+
+            Label title = NewLabel("校园内网登录器（定制版）", 12, 8);
+            title.ForeColor = Color.FromArgb(60, 60, 60);
+            tp.Controls.Add(title);
+
+            Label minBtn = new Label();
+            minBtn.Text = "—";
+            minBtn.Size = new Size(30, 30);
+            minBtn.Location = new Point(260, 0);
+            minBtn.TextAlign = ContentAlignment.MiddleCenter;
+            minBtn.ForeColor = Color.FromArgb(70, 70, 70);
+            minBtn.BackColor = Color.White;
+            minBtn.Cursor = Cursors.Hand;
+            minBtn.Click += delegate { EnsureTray(); loginForm.Hide(); };
+            minBtn.MouseEnter += delegate { minBtn.BackColor = Color.FromArgb(232, 232, 232); };
+            minBtn.MouseLeave += delegate { minBtn.BackColor = Color.White; };
+            tp.Controls.Add(minBtn);
+
+            Label closeBtn = new Label();
+            closeBtn.Text = "×";
+            closeBtn.Font = new Font(FontFamily.GenericSansSerif, 11, FontStyle.Bold);
+            closeBtn.Size = new Size(30, 30);
+            closeBtn.Location = new Point(290, 0);
+            closeBtn.TextAlign = ContentAlignment.MiddleCenter;
+            closeBtn.ForeColor = Color.FromArgb(70, 70, 70);
+            closeBtn.BackColor = Color.White;
+            closeBtn.Cursor = Cursors.Hand;
+            closeBtn.Click += delegate { loginForm.Close(); };
+            closeBtn.MouseEnter += delegate { closeBtn.BackColor = Color.FromArgb(232, 17, 35); closeBtn.ForeColor = Color.White; };
+            closeBtn.MouseLeave += delegate { closeBtn.BackColor = Color.White; closeBtn.ForeColor = Color.FromArgb(70, 70, 70); };
+            tp.Controls.Add(closeBtn);
+            loginForm.Controls.Add(tp);
+
+            // 悬停提示
+            ToolTip tip = new ToolTip();
+            tip.SetToolTip(minBtn, "最小化到托盘");
+            tip.SetToolTip(closeBtn, "退出程序");
+            tip.SetToolTip(title, "按住可拖动窗口");
+
+            // 按住标题条拖动窗口
+            bool dragging = false;
+            Point dragCursor = Point.Empty, dragForm = Point.Empty;
+            tp.MouseDown += delegate(object s, MouseEventArgs e)
+            {
+                if (e.Button == MouseButtons.Left) { dragging = true; dragCursor = Cursor.Position; dragForm = loginForm.Location; }
+            };
+            tp.MouseMove += delegate(object s, MouseEventArgs e)
+            {
+                if (dragging)
+                {
+                    Point d = Point.Subtract(Cursor.Position, (Size)dragCursor);
+                    loginForm.Location = Point.Add(dragForm, (Size)d);
+                }
+            };
+            tp.MouseUp += delegate(object s, MouseEventArgs e) { dragging = false; };
+            title.MouseDown += delegate(object s, MouseEventArgs e)
+            {
+                if (e.Button == MouseButtons.Left) { dragging = true; dragCursor = Cursor.Position; dragForm = loginForm.Location; }
+            };
+            title.MouseMove += delegate(object s, MouseEventArgs e)
+            {
+                if (dragging)
+                {
+                    Point d = Point.Subtract(Cursor.Position, (Size)dragCursor);
+                    loginForm.Location = Point.Add(dragForm, (Size)d);
+                }
+            };
+            title.MouseUp += delegate(object s, MouseEventArgs e) { dragging = false; };
+
+            // ---------- 左右分栏：左栏 = 标签+输入框（同一行），右栏 = 登录/注销 ----------
+            Label lblUser = NewLabel("工号:", 20, 64);
             txtUser = new TextBox();
-            txtUser.Location = new Point(62, 30);
+            txtUser.Location = new Point(62, 60);
             txtUser.Size = new Size(145, 23);
 
             Button btnLogin = new Button();
             btnLogin.Text = "登 录";
-            btnLogin.Location = new Point(225, 30);
+            btnLogin.Location = new Point(225, 60);
             btnLogin.Size = new Size(72, 26);
 
-            Label lblPass = NewLabel("密码:", 20, 72);
+            Label lblPass = NewLabel("密码:", 20, 102);
             txtPass = new TextBox();
-            txtPass.Location = new Point(62, 68);
+            txtPass.Location = new Point(62, 98);
             txtPass.Size = new Size(145, 23);
             txtPass.PasswordChar = '*';
 
             Button btnLogout = new Button();
             btnLogout.Text = "注 销";
-            btnLogout.Location = new Point(225, 68);
+            btnLogout.Location = new Point(225, 98);
             btnLogout.Size = new Size(72, 26);
 
             chkRemember = new CheckBox();
             chkRemember.Text = "记住密码";
-            chkRemember.Location = new Point(25, 120);
+            chkRemember.Location = new Point(25, 150);
             chkRemember.AutoSize = true;
 
             chkGuard = new CheckBox();
             chkGuard.Text = "断网自动重连";
-            chkGuard.Location = new Point(165, 120);
+            chkGuard.Location = new Point(165, 150);
             chkGuard.AutoSize = true;
 
             chkAutoStart = new CheckBox();
             chkAutoStart.Text = "开机自启动";
-            chkAutoStart.Location = new Point(25, 146);
+            chkAutoStart.Location = new Point(25, 176);
             chkAutoStart.AutoSize = true;
 
             chkAutoLogin = new CheckBox();
             chkAutoLogin.Text = "开机自登录";
-            chkAutoLogin.Location = new Point(165, 146);
+            chkAutoLogin.Location = new Point(165, 176);
             chkAutoLogin.AutoSize = true;
 
             loginForm.Controls.Add(lblUser);
@@ -535,20 +593,6 @@ namespace CNLC
                 try { tray.Visible = false; tray.Dispose(); } catch { }
                 tray = null;
             }
-        }
-
-        private static void RemoveMaximizeBox()
-        {
-            try
-            {
-                const int GWL_STYLE = -16, WS_MAXIMIZEBOX = 0x10000;
-                // SWP_NOSIZE|SWP_NOMOVE|SWP_NOZORDER|SWP_FRAMECHANGED：强制 DWM 重绘标题栏
-                const uint SWP_FLAGS = 0x0001 | 0x0002 | 0x0004 | 0x0020;
-                SetWindowLong(loginForm.Handle, GWL_STYLE,
-                    GetWindowLong(loginForm.Handle, GWL_STYLE) & ~WS_MAXIMIZEBOX);
-                SetWindowPos(loginForm.Handle, IntPtr.Zero, 0, 0, 0, 0, SWP_FLAGS);
-            }
-            catch { }
         }
 
         // ================= 状态窗口 / Toast =================
