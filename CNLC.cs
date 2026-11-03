@@ -89,6 +89,21 @@ namespace CNLC
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern short GetAsyncKeyState(int vKey);
 
+        // 统一弹窗入口：指定主界面为父窗口。
+        // 关键修复：主界面 TopMost=true，无父窗口的 MessageBox 会被压在主界面下层，
+        // 同时主界面又被模态框禁用——表现为"程序卡死"（托盘注销确认框曾触发此 bug）
+        private static DialogResult Msg(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon)
+        {
+            Form owner = (loginForm != null && !loginForm.IsDisposed) ? loginForm : null;
+            if (owner != null) return MessageBox.Show(owner, text, caption, buttons, icon);
+            return MessageBox.Show(text, caption, buttons, icon);
+        }
+
+        private static void Msg(string text, string caption)
+        {
+            Msg(text, caption, MessageBoxButtons.OK, MessageBoxIcon.None);
+        }
+
         [STAThread]
         private static void Main(string[] args)
         {
@@ -115,7 +130,7 @@ namespace CNLC
             }
             if (!createdNew)
             {
-                MessageBox.Show("校园内网登录器已在运行（右下角托盘图标）。\n\n如需切换账号，请先右键托盘图标退出，再重新启动。", "提示");
+                Msg("校园内网登录器已在运行（右下角托盘图标）。\n\n如需切换账号，请先右键托盘图标退出，再重新启动。", "提示");
                 return;
             }
 
@@ -395,7 +410,7 @@ namespace CNLC
                     if (!File.Exists(CredFile))
                     {
                         suppressAutoLogin = true; chkAutoLogin.Checked = false; suppressAutoLogin = false;
-                        MessageBox.Show("开机自登录需要先勾选\"记住密码\"并登录一次，保存账号。", "提示");
+                        Msg("开机自登录需要先勾选\"记住密码\"并登录一次，保存账号。", "提示");
                         return;
                     }
                     try
@@ -406,7 +421,7 @@ namespace CNLC
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show("设置开机自登录失败：" + ex.Message, "错误");
+                        Msg("设置开机自登录失败：" + ex.Message, "错误");
                         suppressAutoLogin = true; chkAutoLogin.Checked = false; suppressAutoLogin = false;
                     }
                 }
@@ -432,7 +447,7 @@ namespace CNLC
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show("打开浏览器失败：" + ex.Message, "错误");
+                    Msg("打开浏览器失败：" + ex.Message, "错误");
                 }
                 EnsureTray();
                 loginForm.Hide();
@@ -463,7 +478,7 @@ namespace CNLC
             string p = txtPass.Text;
             if (u.Length == 0 || p.Length == 0)
             {
-                MessageBox.Show("请填写账号和密码。", "提示");
+                Msg("请填写账号和密码。", "提示");
                 return;
             }
             portalUser = u;
@@ -655,10 +670,10 @@ namespace CNLC
             if (target.Length == 0) target = portalUser;
             if (target.Length == 0)
             {
-                MessageBox.Show("尚未登录，无需注销。", "提示");
+                Msg("尚未登录，无需注销。", "提示");
                 return;
             }
-            DialogResult r = MessageBox.Show(
+            DialogResult r = Msg(
                 "确定注销账号 " + target + " 吗？\n注销后网络将断开，守护暂停。", "确认注销",
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question);
             if (r != DialogResult.Yes) return;
@@ -706,7 +721,7 @@ namespace CNLC
         {
             if (tray == null)
             {
-                MessageBox.Show("尚未登录，守护未启动。", "状态");
+                Msg("尚未登录，守护未启动。", "状态");
                 return;
             }
             // 单实例：状态窗已打开时不重复弹
