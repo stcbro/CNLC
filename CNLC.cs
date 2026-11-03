@@ -604,24 +604,27 @@ namespace CNLC
 
         private static void ShowLoginResult(string message, bool isError)
         {
-            // 登录结果反馈：用户主动点击登录的提示，不受后台静默开关（ShowNotify）影响
-            // 显示在屏幕顶部中央，3 秒后自动消失，不打遮挡登录窗口
+            // 登录结果反馈：显示在登录窗口正下方，大小随文字自适应，3 秒后自动消失
             Form tf = new Form();
             tf.FormBorderStyle = FormBorderStyle.None;
             tf.StartPosition = FormStartPosition.Manual;
-            Rectangle wa = Screen.PrimaryScreen.WorkingArea;
-            tf.Size = new Size(360, 56);
-            tf.Location = new Point(wa.Left + (wa.Width - tf.Width) / 2, wa.Top + 80);
+            tf.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tf.TopMost = true;
             tf.ShowInTaskbar = false;
             tf.BackColor = isError ? Color.FromArgb(198, 40, 40) : Color.FromArgb(46, 125, 50);
             Label lb = new Label();
             lb.Text = message;
-            lb.Dock = DockStyle.Fill;
+            lb.AutoSize = true;
             lb.ForeColor = Color.White;
-            lb.TextAlign = ContentAlignment.MiddleCenter;
-            lb.AutoSize = false;
+            lb.Padding = new Padding(14, 8, 14, 8);
             tf.Controls.Add(lb);
+            // 窗口显示后（尺寸已定）再定位到登录窗正下方、水平居中
+            tf.Shown += delegate
+            {
+                tf.Location = new Point(
+                    loginForm.Left + (loginForm.Width - tf.Width) / 2,
+                    loginForm.Bottom + 8);
+            };
             System.Windows.Forms.Timer t = new System.Windows.Forms.Timer();
             t.Interval = 3000;
             t.Tick += delegate { tf.Close(); };
