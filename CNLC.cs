@@ -537,7 +537,7 @@ namespace CNLC
             miGuard = new ToolStripMenuItem("断网自动重连");
             miGuard.Checked = true;
             miGuard.Click += delegate { SetGuard(!GuardOn); };
-            ToolStripMenuItem miAbout = new ToolStripMenuItem("软件简介");
+            ToolStripMenuItem miAbout = new ToolStripMenuItem("关于");
             miAbout.Click += delegate { ShowAbout(); };
             ToolStripMenuItem miLogout = new ToolStripMenuItem("注销");
             miLogout.Click += delegate { DoLogout(); };
@@ -826,7 +826,7 @@ namespace CNLC
         {
             if (aboutForm != null && !aboutForm.IsDisposed) { aboutForm.Activate(); return; }
             aboutForm = new Form();
-            aboutForm.Text = "软件简介";
+            aboutForm.Text = "关于";
             aboutForm.ClientSize = new Size(368, 296);
             aboutForm.FormBorderStyle = FormBorderStyle.None;
             aboutForm.StartPosition = FormStartPosition.CenterScreen;
@@ -835,7 +835,7 @@ namespace CNLC
             aboutForm.AutoScaleMode = AutoScaleMode.Dpi;
             aboutForm.AutoScaleDimensions = new SizeF(96F, 96F);
 
-            Label title = NewLabel("软件简介", 20, 12);
+            Label title = NewLabel("关于校园内网登录器", 20, 12);
             title.Font = new Font(FontFamily.GenericSansSerif, 10, FontStyle.Bold);
             aboutForm.Controls.Add(title);
 
