@@ -75,6 +75,11 @@ namespace CNLC
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool SetProcessDPIAware();
 
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
         [STAThread]
         private static void Main(string[] args)
         {
@@ -153,6 +158,17 @@ namespace CNLC
             loginForm.MinimizeBox = true;    // 最小化按钮：点击后隐藏到托盘（不是任务栏）
             loginForm.TopMost = true;
             loginForm.ShowInTaskbar = false; // 最小化到托盘时任务栏不留图标
+            // 彻底移除标题栏的最大化按钮（□），标题栏只留 － 和 ×
+            loginForm.HandleCreated += delegate
+            {
+                try
+                {
+                    int GWL_STYLE = -16, WS_MAXIMIZEBOX = 0x10000;
+                    SetWindowLong(loginForm.Handle, GWL_STYLE,
+                        GetWindowLong(loginForm.Handle, GWL_STYLE) & ~WS_MAXIMIZEBOX);
+                }
+                catch { }
+            };
             // 拦截最小化动作：窗口隐藏进托盘，通过托盘菜单"显示主界面"唤回
             loginForm.Resize += delegate
             {
@@ -367,19 +383,6 @@ namespace CNLC
             miGuard = new ToolStripMenuItem("断网自动重连");
             miGuard.Checked = true;
             miGuard.Click += delegate { SetGuard(!GuardOn); };
-            ToolStripMenuItem miSwitch = new ToolStripMenuItem("切换账号");
-            miSwitch.Click += delegate
-            {
-                // 切换账号 = 暂停检测、弹回登录窗；不动"断网自动重连"开关，
-                // 重新登录后守护按登录窗里的勾选状态自动恢复
-                if (timer != null) timer.Stop();
-                GuardOn = false;
-                tray.Text = "校园内网登录器 - 待重新登录";
-                txtUser.Text = portalUser;
-                txtPass.Text = portalPass;
-                chkRemember.Checked = File.Exists(CredFile);
-                loginForm.Show();
-            };
             ToolStripMenuItem miLogout = new ToolStripMenuItem("注销");
             miLogout.Click += delegate { DoLogout(); };
             ToolStripMenuItem miExit = new ToolStripMenuItem("退出");
@@ -388,8 +391,6 @@ namespace CNLC
             menu.Items.Add(miShow);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(miGuard);
-            menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add(miSwitch);
             menu.Items.Add(miLogout);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(miExit);
