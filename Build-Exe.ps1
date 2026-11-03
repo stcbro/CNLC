@@ -2,9 +2,14 @@
 #  Build-Exe.ps1 - Compile CNLC.cs into a single-file exe
 #  Usage:
 #    powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Exe.ps1
-#  Output: CNLC\CNLC.exe  (uses the built-in .NET Framework compiler,
-#          no third-party packer -> far fewer antivirus false positives)
+#      -> CNLC\CNLC.exe       正式版：零残留（不写日志/状态文件）
+#    powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Exe.ps1 -Test
+#      -> CNLC\CNLC-Test.exe  测试版（/define:DIAG）：始终写日志与状态文件，作者手持排查用
+#  Output: uses the built-in .NET Framework compiler, no third-party
+#          packer -> far fewer antivirus false positives
 # ============================================================
+
+param([switch]$Test)
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -24,17 +29,21 @@ if (-not $csc) {
 Write-Host "Compiler: $csc" -ForegroundColor Gray
 
 # 2) Stop a running instance so the output file is not locked
-Get-Process -Name 'CNLC' -ErrorAction SilentlyContinue | ForEach-Object {
-    Write-Host 'Stopping running CNLC process...' -ForegroundColor Yellow
+$procName = if ($Test) { 'CNLC-Test' } else { 'CNLC' }
+$exeName  = if ($Test) { 'CNLC-Test.exe' } else { 'CNLC.exe' }
+Get-Process -Name $procName -ErrorAction SilentlyContinue | ForEach-Object {
+    Write-Host "Stopping running $procName process..." -ForegroundColor Yellow
     $_.Kill()
     $_.WaitForExit(3000)
 }
 
 # 3) Compile
-$exePath = Join-Path $dist 'CNLC.exe'
+$exePath = Join-Path $dist $exeName
 if (Test-Path $exePath) { Remove-Item $exePath -Force }
 
-& $csc /nologo /target:winexe /platform:anycpu /out:"$exePath" `
+$defines = if ($Test) { '/define:DIAG' } else { '' }
+
+& $csc /nologo /target:winexe /platform:anycpu $defines /out:"$exePath" `
     /win32icon:"$root\app.ico" `
     /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll `
     "$root\CNLC.cs"
@@ -45,4 +54,5 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path $exePath)) {
 }
 
 $sizeKB = [Math]::Round((Get-Item $exePath).Length / 1KB)
-Write-Host "Build OK: $exePath ($sizeKB KB)" -ForegroundColor Green
+$kind = if ($Test) { 'TEST (log + status file ON)' } else { 'RELEASE (zero residue)' }
+Write-Host "Build OK: $exePath ($sizeKB KB) [$kind]" -ForegroundColor Green

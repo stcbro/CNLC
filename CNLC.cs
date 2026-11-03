@@ -54,11 +54,17 @@ namespace CNLC
 
         private static readonly string BaseDir = AppDomain.CurrentDomain.BaseDirectory;
         private static readonly string CredFile = Path.Combine(BaseDir, "CNLC.dat");
-
-        // 诊断模式（默认关，保持零残留）：在 exe 旁新建空文件 debug.on 即开启，
-        // 开启后写 logs/auto_login_日期.log，用于排查个别教室环境无法认证的问题
-        private static readonly bool DebugMode = File.Exists(Path.Combine(BaseDir, "debug.on"));
+        private static readonly string StateFile = Path.Combine(BaseDir, "auto_login_status.txt");
         private static readonly string LogDir = Path.Combine(BaseDir, "logs");
+
+        // 日志开关：
+        //   测试版（编译时 /define:DIAG，文件名 CNLC-Test.exe）：始终写日志与状态文件，作者手持排查用
+        //   正式版（默认构建）：零残留；仅在 exe 旁新建空文件 debug.on 时临时写日志
+#if DIAG
+        private static readonly bool DebugMode = true;
+#else
+        private static readonly bool DebugMode = File.Exists(Path.Combine(BaseDir, "debug.on"));
+#endif
 
         // ---------- 运行状态 ----------
         private static Mutex mutex;
@@ -749,6 +755,21 @@ namespace CNLC
                 return;
             }
             bool offline = TestOffline();
+#if DIAG
+            // 测试版：状态文件里的最近检测/登录时间优先（跨重启保留）
+            try
+            {
+                if (File.Exists(StateFile))
+                {
+                    string c = File.ReadAllText(StateFile);
+                    Match m = Regex.Match(c, "\"last_check\"\\s*:\\s*\"([^\"]*)\"");
+                    if (m.Success && m.Groups[1].Value.Length > 0) lastCheckTime = m.Groups[1].Value;
+                    m = Regex.Match(c, "\"last_login_at\"\\s*:\\s*\"([^\"]*)\"");
+                    if (m.Success && m.Groups[1].Value.Length > 0) lastLoginTime = m.Groups[1].Value;
+                }
+            }
+            catch { }
+#endif
 
             statusForm = new Form();
             statusForm.Text = "运行状态";
@@ -1147,6 +1168,16 @@ namespace CNLC
         {
             lastCheckTime = Now();
             if (loginSuccess) lastLoginTime = Now();
+#if DIAG
+            // 测试版：额外持久化状态文件（跨重启保留最近检测/登录时间）；正式版零残留不写
+            try
+            {
+                string content = "{\n  \"last_check\": \"" + lastCheckTime + "\",\n  \"online_status\": \"ONLINE\",\n  \"last_login_at\": \"" +
+                                 (lastLoginTime.Length > 0 ? lastLoginTime : lastCheckTime) + "\"\n}";
+                File.WriteAllText(StateFile, content, Encoding.UTF8);
+            }
+            catch { }
+#endif
         }
 
         private static void LoadCreds()
