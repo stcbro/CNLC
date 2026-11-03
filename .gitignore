@@ -17,3 +17,5 @@ CNLC/CNLC.dat
 dist/AutoLogin_merged.ps1
 dist/.gitmsg.txt
 .gitmsg.txt
+CNLC/CNLC-Test.exe
+CNLC/*.zip
