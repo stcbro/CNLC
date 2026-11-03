@@ -206,7 +206,7 @@ namespace CNLC
         private static void ApplyTitleStyle()
         {
             titlePanel.BackColor = TitleBarBack;
-            titleLabel.ForeColor = Color.FromArgb(40, 40, 40);
+            titleLabel.ForeColor = Color.FromArgb(25, 25, 25);
             minBtn.ForeColor = Color.FromArgb(60, 60, 60);
             minBtn.BackColor = TitleBarBack;
             closeBtn.ForeColor = Color.FromArgb(60, 60, 60);
@@ -245,18 +245,20 @@ namespace CNLC
             Bitmap iconForPaint = titleBmp;
             titlePanel.Paint += delegate(object s, PaintEventArgs e)
             {
-                // 程序图标（缩放为 16×16，高质量插值避免发糊）
+                // 程序图标：按当前 DPI 缩放绘制（125% 屏画 20×20 物理像素，避免非整数拉伸发糊）
                 if (iconForPaint != null)
                 {
                     e.Graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
                     e.Graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
-                    e.Graphics.DrawImage(iconForPaint, 10, 8, 16, 16);
+                    int iconSize = Math.Max(16, (int)Math.Round(16 * e.Graphics.DpiX / 96F));
+                    e.Graphics.DrawImage(iconForPaint, 10, (titlePanel.Height - iconSize) / 2, iconSize, iconSize);
                 }
             };
 
             titleLabel = NewLabel("校园内网登录器（CNLC）", 32, 8);
-            titleLabel.ForeColor = Color.FromArgb(40, 40, 40);
-            titleLabel.Font = new Font("Microsoft YaHei UI", 9F);
+            // 标题文字与正文同字体但加粗加深，低分屏/缩放屏上不发虚
+            titleLabel.Font = new Font(Control.DefaultFont, FontStyle.Bold);
+            titleLabel.ForeColor = Color.FromArgb(25, 25, 25);
             titlePanel.Controls.Add(titleLabel);
 
             // 最小化按钮：46×32 贴右上，图标为画的水平细线（仿系统）
