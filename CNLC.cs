@@ -948,18 +948,17 @@ namespace CNLC
                 string tag = GetLatestReleaseTag();
                 owner.BeginInvoke(new MethodInvoker(delegate()
                 {
-                    Version rv = null, lv = null;
+                    Version rv = null;
                     bool ok = tag != null && tag.Length > 0 &&
-                              Version.TryParse(tag.TrimStart('v', 'V'), out rv) &&
-                              Version.TryParse(AppVersion, out lv);
+                              Version.TryParse(tag.TrimStart('v', 'V'), out rv);
                     if (tag == null)
                     {
                         MsgOn(owner, "检查更新失败：无法连接更新源，请稍后再试。", "检查更新");
                         return;
                     }
-                    if (ok && rv > lv)
+                    if (ok && rv > new Version(AppVersion))
                     {
-                        if (MsgOn(owner, "发现新版本 v" + rv + "（当前 v" + lv + "）。\n\n是否打开下载页面？",
+                        if (MsgOn(owner, "发现新版本 v" + rv + "（当前 v" + AppVersion + "）。\n\n是否打开下载页面？",
                                 "检查更新", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
                         {
                             try { System.Diagnostics.Process.Start(ReleaseUrl); } catch { }
@@ -967,7 +966,7 @@ namespace CNLC
                     }
                     else
                     {
-                        MsgOn(owner, "当前已是最新版本 v" + lv + "。", "检查更新");
+                        MsgOn(owner, "当前已是最新版本 v" + AppVersion + "。", "检查更新");
                     }
                 }));
             });
