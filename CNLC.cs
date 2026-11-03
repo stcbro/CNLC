@@ -899,7 +899,7 @@ namespace CNLC
             body.Size = new Size(332, 214);
             aboutForm.Controls.Add(body);
 
-            Label foot = NewLabel("版本 " + AppVersion + "    © " + DateTime.Now.Year + " Bro.Cui", 18, 266);
+            Label foot = NewLabel("v" + AppVersion + "    © " + DateTime.Now.Year + " Bro.Cui", 18, 266);
 
             // 右下角"检查更新"按钮：联网比对 Gitee 上的 version.txt
             Button btnUpdate = new Button();
