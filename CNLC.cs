@@ -304,8 +304,8 @@ namespace CNLC
             // ---------- 左右分栏：左栏 = 标签+输入框（同一行），右栏 = 登录/注销 ----------
             Label lblUser = NewLabel("工号:", 20, 66);
             txtUser = new TextBox();
-            txtUser.Location = new Point(62, 62);
-            txtUser.Size = new Size(145, 23);
+            txtUser.Location = new Point(72, 62);
+            txtUser.Size = new Size(135, 23);
 
             Button btnLogin = new Button();
             btnLogin.Text = "登 录";
@@ -314,8 +314,8 @@ namespace CNLC
 
             Label lblPass = NewLabel("密码:", 20, 104);
             txtPass = new TextBox();
-            txtPass.Location = new Point(62, 100);
-            txtPass.Size = new Size(145, 23);
+            txtPass.Location = new Point(72, 100);
+            txtPass.Size = new Size(135, 23);
             txtPass.PasswordChar = '*';
 
             Button btnLogout = new Button();
@@ -433,9 +433,15 @@ namespace CNLC
 
             // 底行对齐：让"开机自登录"复选框与"雨课堂网页版"按钮中心线一致
             // （DPI 缩放对两者舍入不同会产生 1~3px 错位，显示时按实际高度动态居中修正）
+            // 输入框动态定位：不同屏幕/字体的标签渲染宽度不同（希沃大屏会贴住输入框），
+            // 显示时按标签实际右边界重排，保证 6px 间隙，宽度延伸到距登录/注销按钮 8px
             loginForm.Shown += delegate
             {
                 chkAutoLogin.Top = btnYuketang.Top + (btnYuketang.Height - chkAutoLogin.Height) / 2;
+                txtUser.Left = lblUser.Right + 6;
+                txtUser.Width = btnLogin.Left - txtUser.Left - 8;
+                txtPass.Left = lblPass.Right + 6;
+                txtPass.Width = btnLogout.Left - txtPass.Left - 8;
             };
 
             loginForm.FormClosed += delegate { ExitApp(); };
