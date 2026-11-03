@@ -1207,7 +1207,7 @@ namespace CNLC
             {
                 try { File.Move(legacyCred, CredFile); } catch { }
             }
-            if (File.Exists(CredFile)) HideCredFile();
+            if (File.Exists(CredFile)) NormalizeCredFile();
             if (!File.Exists(CredFile)) return;
             try
             {
@@ -1226,19 +1226,17 @@ namespace CNLC
             }
         }
 
-        private static void HideCredFile()
+        // 凭据文件保持普通属性。旧版曾设隐藏+系统属性，但"隐藏的凭据文件"是杀毒软件
+        // 启发式引擎的强恶意特征（360 因此误报），已取消；旧文件读入时归一化为普通属性
+        private static void NormalizeCredFile()
         {
-            // 隐藏 + 系统属性：避免被随手看到/误删
-            try { File.SetAttributes(CredFile, FileAttributes.Hidden | FileAttributes.System); } catch { }
+            try { File.SetAttributes(CredFile, FileAttributes.Archive); } catch { }
         }
 
         private static void WriteCredFile(string content)
         {
-            // 注意：.NET 的 File.WriteAllText 无法覆盖写入隐藏文件（抛 UnauthorizedAccessException），
-            // 必须先去掉属性，写完再恢复隐藏
-            try { File.SetAttributes(CredFile, FileAttributes.Archive); } catch { }
+            NormalizeCredFile();   // 旧版可能遗留隐藏/系统属性，写前归一化，否则 WriteAllText 会抛异常
             File.WriteAllText(CredFile, content, Encoding.UTF8);
-            HideCredFile();
         }
 
         private static void SaveCreds()
