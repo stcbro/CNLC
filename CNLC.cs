@@ -39,8 +39,8 @@ namespace CNLC
         private const string YuketangUrl = "https://sycu.yuketang.cn/pro/portal/home/";   // 雨课堂网页版入口
         // 更新检查走 Gitee Release 发布制：只有作者手动创建的 Release 才对用户可见，
         // main 分支的日常提交不影响用户端
-        private const string ReleaseApiUrl = "https://gitee.com/api/v5/repos/stcbro/CNLC/releases/latest";
-        private const string ReleaseUrl = "https://gitee.com/stcbro/CNLC/releases";   // 下载页
+        private const string UpdateJsonUrl = "https://gitee.com/stcbro/CNLC/raw/master/update.json";   // 更新指针（与银盾 SilverShield 同机制）
+        private const string ReleaseUrl = "https://gitee.com/stcbro/CNLC/releases";   // 下载页（指针缺失时兜底）
 
         // 软件简介（"关于"弹出）；中英文之间不加空格，紧凑排版
         private const string AboutText =
@@ -1060,13 +1060,14 @@ namespace CNLC
 
         // ================= 检查更新 =================
 
-        // 获取 Gitee 最新 Release 的 tag（如 "v1.3.5"）。
-        // 返回 "" 表示尚无任何发布（视为已是最新）；null 表示网络失败
-        private static string GetLatestReleaseTag()
+        // 读取仓库根目录 update.json 指针（version + url），与银盾项目同机制：
+        // Release 创建只是归档，用户不可见；修改 update.json 并推送才代表"推送给用户"。
+        // 返回 [版本号, 下载地址]；null 表示网络失败；版本号为空表示指针缺失（视为已是最新）
+        private static string[] GetUpdatePointer()
         {
             try
             {
-                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(ReleaseApiUrl);
+                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(UpdateJsonUrl);
                 req.Method = "GET";
                 req.Timeout = 8000;
                 req.ReadWriteTimeout = 8000;
@@ -1076,14 +1077,18 @@ namespace CNLC
                     using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
                     using (StreamReader sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
                     {
-                        Match m = Regex.Match(sr.ReadToEnd(), "\"tag_name\"\\s*:\\s*\"([^\"]*)\"");
-                        return m.Success ? m.Groups[1].Value : "";
+                        string s = sr.ReadToEnd();
+                        Match mv = Regex.Match(s, "\"version\"\\s*:\\s*\"([^\"]*)\"");
+                        Match mu = Regex.Match(s, "\"url\"\\s*:\\s*\"([^\"]*)\"");
+                        return new string[] {
+                            mv.Success ? mv.Groups[1].Value : "",
+                            mu.Success ? mu.Groups[1].Value : "" };
                     }
                 }
                 catch (WebException we)
                 {
                     HttpWebResponse err = we.Response as HttpWebResponse;
-                    if (err != null && err.StatusCode == HttpStatusCode.NotFound) return "";   // 仓库还没有任何 Release
+                    if (err != null && err.StatusCode == HttpStatusCode.NotFound) return new string[] { "", "" };   // 指针文件不存在
                     return null;
                 }
             }
@@ -1097,13 +1102,15 @@ namespace CNLC
             if (owner == null || owner.IsDisposed) return;
             System.Threading.Thread t = new System.Threading.Thread(delegate()
             {
-                string tag = GetLatestReleaseTag();
+                string[] up = GetUpdatePointer();
+                string ver = up == null ? null : up[0];
+                string dl = (up != null && up[1].Length > 0) ? up[1] : ReleaseUrl;
                 owner.BeginInvoke(new MethodInvoker(delegate()
                 {
                     Version rv = null;
-                    bool ok = tag != null && tag.Length > 0 &&
-                              Version.TryParse(tag.TrimStart('v', 'V'), out rv);
-                    if (tag == null)
+                    bool ok = ver != null && ver.Length > 0 &&
+                              Version.TryParse(ver.TrimStart('v', 'V'), out rv);
+                    if (ver == null)
                     {
                         MsgOn(owner, "检查更新失败：无法连接更新源，请稍后再试。", "检查更新");
                         return;
@@ -1113,7 +1120,7 @@ namespace CNLC
                         if (MsgOn(owner, "发现新版本 v" + rv + "（当前 v" + AppVersion + "）。\n\n是否打开下载页面？",
                                 "检查更新", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
                         {
-                            try { System.Diagnostics.Process.Start(ReleaseUrl); } catch { }
+                            try { System.Diagnostics.Process.Start(dl); } catch { }
                         }
                     }
                     else
