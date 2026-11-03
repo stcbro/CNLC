@@ -472,34 +472,36 @@ namespace CNLC
 
         private static void DoLogout()
         {
-            if (portalUser.Length == 0)
+            // 注销目标以输入框当前账号为准（用户可能已改输新账号），输入框为空才用已登录账号
+            string target = txtUser.Text.Trim();
+            if (target.Length == 0) target = portalUser;
+            if (target.Length == 0)
             {
                 MessageBox.Show("尚未登录，无需注销。", "提示");
                 return;
             }
             DialogResult r = MessageBox.Show(
-                "确定注销账号 " + portalUser + " 吗？\n注销后网络将断开，守护暂停。", "确认注销",
+                "确定注销账号 " + target + " 吗？\n注销后网络将断开，守护暂停。", "确认注销",
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question);
             if (r != DialogResult.Yes) return;
 
+            portalUser = target;
             StopGuard();
             bool ok = PortalLogout();
             if (ok)
             {
                 // portal 服务器注销后有短暂冷却期 → 开启加密重试模式
                 ExtendedRetry = true;
-                Log("注销成功，网络已断开。");
-                Balloon("账号 " + portalUser + " 已注销，网络已断开", false);
-                tray.Text = "校园内网登录器 - 已注销";
+                Log("注销成功（" + target + "），网络已断开。");
+                Balloon("账号 " + target + " 已注销，网络已断开", false);
+                if (tray != null) tray.Text = "校园内网登录器 - 已注销";
             }
             else
             {
                 Log("注销请求未成功（可能已离线或被服务器拒绝）");
                 Balloon("注销请求未成功（可能已离线）", true);
             }
-            txtUser.Text = portalUser;
-            txtPass.Text = portalPass;
-            loginForm.Show();
+            // 保留输入框中用户正在输入的账号密码，不回填旧值
         }
 
         private static void ExitApp()
@@ -604,10 +606,11 @@ namespace CNLC
 
         private static void ShowLoginResult(string message, bool isError)
         {
-            // 登录结果反馈：显示在登录窗口正下方，大小随文字自适应，3 秒后自动消失
+            // 登录结果反馈：显示在登录窗底部内层，宽度=文字+4个字符，3 秒后自动消失
             Form tf = new Form();
             tf.FormBorderStyle = FormBorderStyle.None;
             tf.StartPosition = FormStartPosition.Manual;
+            tf.AutoSize = true;                    // 必须开启，否则 AutoSizeMode 无效
             tf.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             tf.TopMost = true;
             tf.ShowInTaskbar = false;
@@ -616,14 +619,14 @@ namespace CNLC
             lb.Text = message;
             lb.AutoSize = true;
             lb.ForeColor = Color.White;
-            lb.Padding = new Padding(14, 8, 14, 8);
+            lb.Padding = new Padding(26, 8, 26, 8);   // 左右各多出约 2 个字符，共 4 字符余量
             tf.Controls.Add(lb);
-            // 窗口显示后（尺寸已定）再定位到登录窗正下方、水平居中
+            // 窗口显示后（尺寸已定）定位到登录窗底部内层、水平居中，浮于主界面上层
             tf.Shown += delegate
             {
                 tf.Location = new Point(
                     loginForm.Left + (loginForm.Width - tf.Width) / 2,
-                    loginForm.Bottom + 8);
+                    loginForm.Bottom - tf.Height - 12);
             };
             System.Windows.Forms.Timer t = new System.Windows.Forms.Timer();
             t.Interval = 3000;
