@@ -901,7 +901,7 @@ namespace CNLC
             body.Size = new Size(332, 214);
             aboutForm.Controls.Add(body);
 
-            Label foot = NewLabel("v" + AppVersion + "    © " + DateTime.Now.Year + " Bro.Cui", 18, 266);
+            Label foot = NewLabel("v" + AppVersion + "  © " + DateTime.Now.Year + " Bro.Cui", 18, 266);
 
             // 右下角"检查更新"按钮：联网比对 Gitee 上的 version.txt
             Button btnUpdate = new Button();
@@ -917,20 +917,28 @@ namespace CNLC
             // 固定尺寸在不同分辨率/缩放下文字行数不同，会溢出裁切
             aboutForm.Shown += delegate
             {
-                int x = body.Left;
-                int inner = aboutForm.ClientSize.Width - x * 2;
-                Size ts = TextRenderer.MeasureText(AboutText, body.Font,
-                    new Size(inner, int.MaxValue),
-                    TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
-                body.Size = new Size(inner, ts.Height + 6);
+                try
+                {
+                    int x = body.Left;
+                    int inner = aboutForm.ClientSize.Width - x * 2;
+                    Size ts = TextRenderer.MeasureText(AboutText, body.Font,
+                        new Size(inner, int.MaxValue),
+                        TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                    body.Size = new Size(inner, ts.Height + 6);
+                }
+                catch { }
                 // 底部行：版权与按钮相邻成组、整体居中（行业惯例，避免两端甩开显得松散）
-                int gap = 12;
-                int groupW = foot.Width + gap + btnUpdate.Width;
-                int rowY = body.Bottom + 12;
-                int groupX = (aboutForm.ClientSize.Width - groupW) / 2;
-                foot.Location = new Point(groupX, rowY + (btnUpdate.Height - foot.Height) / 2);
-                btnUpdate.Location = new Point(groupX + foot.Width + gap, rowY);
-                aboutForm.ClientSize = new Size(aboutForm.ClientSize.Width, rowY + btnUpdate.Height + 12);
+                try
+                {
+                    int gap = 10;
+                    int groupW = foot.Width + gap + btnUpdate.Width;
+                    int rowY = body.Bottom + 12;
+                    int groupX = Math.Max(10, (aboutForm.ClientSize.Width - groupW) / 2);
+                    foot.Location = new Point(groupX, rowY + (btnUpdate.Height - foot.Height) / 2);
+                    btnUpdate.Location = new Point(groupX + foot.Width + gap, rowY);
+                    aboutForm.ClientSize = new Size(aboutForm.ClientSize.Width, rowY + btnUpdate.Height + 12);
+                }
+                catch { }
             };
 
             // 点击窗口内任意处或按任意键关闭（"检查更新"按钮除外——点了它要等结果）
