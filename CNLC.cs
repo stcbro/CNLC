@@ -113,7 +113,18 @@ namespace CNLC
 
         private static void RunBg(ThreadStart work)
         {
-            System.Threading.Thread t = new System.Threading.Thread(work);
+            // 后台线程异常必须就地捕获：.NET 中后台线程未捕获异常会直接终止整个进程
+            //（表现为托盘无声消失，已实测），兜底写日志留痕
+            ThreadStart safe = delegate
+            {
+                try { work(); }
+                catch (Exception ex)
+                {
+                    Log("后台线程异常: " + ex.Message + Environment.NewLine
+                        + (ex.StackTrace == null ? "" : ex.StackTrace));
+                }
+            };
+            System.Threading.Thread t = new System.Threading.Thread(safe);
             t.IsBackground = true;
             t.Start();
         }
@@ -162,6 +173,17 @@ namespace CNLC
             try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072 | SecurityProtocolType.Tls; } catch { }
             WebRequest.DefaultWebProxy = new WebProxy();   // 强制直连，绕过本地 VPN/代理
             _uiCtx = System.Threading.SynchronizationContext.Current;   // UI 线程调度器（后台线程回调用）
+
+            // 全局异常兜底：任何异常写日志留痕（诊断模式），避免无声退出无从排查
+            Application.ThreadException += delegate(object s, System.Threading.ThreadExceptionEventArgs e)
+            {
+                Log("UI线程异常: " + e.Exception.Message + Environment.NewLine
+                    + (e.Exception.StackTrace == null ? "" : e.Exception.StackTrace));
+            };
+            AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e)
+            {
+                Log("未处理异常(进程将退出): " + e.ExceptionObject);
+            };
 
             bool autoStart = false;
             foreach (string a in args)
