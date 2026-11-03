@@ -79,6 +79,8 @@ namespace CNLC
         private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
         [STAThread]
         private static void Main(string[] args)
@@ -158,17 +160,9 @@ namespace CNLC
             loginForm.MinimizeBox = true;    // 最小化按钮：点击后隐藏到托盘（不是任务栏）
             loginForm.TopMost = true;
             loginForm.ShowInTaskbar = false; // 最小化到托盘时任务栏不留图标
-            // 彻底移除标题栏的最大化按钮（□），标题栏只留 － 和 ×
-            loginForm.HandleCreated += delegate
-            {
-                try
-                {
-                    int GWL_STYLE = -16, WS_MAXIMIZEBOX = 0x10000;
-                    SetWindowLong(loginForm.Handle, GWL_STYLE,
-                        GetWindowLong(loginForm.Handle, GWL_STYLE) & ~WS_MAXIMIZEBOX);
-                }
-                catch { }
-            };
+            // 彻底移除标题栏的最大化按钮（□）：清除 WS_MAXIMIZEBOX 后强制重绘非客户区
+            // （Windows DWM 即使无该样式也会画禁用态□，必须发 SWP_FRAMECHANGED 才会消失）
+            loginForm.Shown += delegate { RemoveMaximizeBox(); };
             // 拦截最小化动作：窗口隐藏进托盘，通过托盘菜单"显示主界面"唤回
             loginForm.Resize += delegate
             {
@@ -541,6 +535,20 @@ namespace CNLC
                 try { tray.Visible = false; tray.Dispose(); } catch { }
                 tray = null;
             }
+        }
+
+        private static void RemoveMaximizeBox()
+        {
+            try
+            {
+                const int GWL_STYLE = -16, WS_MAXIMIZEBOX = 0x10000;
+                // SWP_NOSIZE|SWP_NOMOVE|SWP_NOZORDER|SWP_FRAMECHANGED：强制 DWM 重绘标题栏
+                const uint SWP_FLAGS = 0x0001 | 0x0002 | 0x0004 | 0x0020;
+                SetWindowLong(loginForm.Handle, GWL_STYLE,
+                    GetWindowLong(loginForm.Handle, GWL_STYLE) & ~WS_MAXIMIZEBOX);
+                SetWindowPos(loginForm.Handle, IntPtr.Zero, 0, 0, 0, 0, SWP_FLAGS);
+            }
+            catch { }
         }
 
         // ================= 状态窗口 / Toast =================
