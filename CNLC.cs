@@ -431,6 +431,13 @@ namespace CNLC
                 loginForm.Hide();
             };
 
+            // 底行对齐：让"开机自登录"复选框与"雨课堂网页版"按钮中心线一致
+            // （DPI 缩放对两者舍入不同会产生 1~3px 错位，显示时按实际高度动态居中修正）
+            loginForm.Shown += delegate
+            {
+                chkAutoLogin.Top = btnYuketang.Top + (btnYuketang.Height - chkAutoLogin.Height) / 2;
+            };
+
             loginForm.FormClosed += delegate { ExitApp(); };
         }
 
