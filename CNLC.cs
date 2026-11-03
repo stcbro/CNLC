@@ -728,10 +728,12 @@ namespace CNLC
                 y += 22;
             }
 
-            // 鼠标任意点击（窗体空白处或任何文字上）即自动关闭
-            statusForm.Click += delegate { statusForm.Close(); };
+            // 任意点击（左键/右键）或键盘输入即自动关闭
+            statusForm.KeyPreview = true;   // 键盘事件先由窗体统一接收（Label 不可聚焦也能捕获）
+            statusForm.KeyDown += delegate(object s, KeyEventArgs e) { statusForm.Close(); };
+            statusForm.MouseClick += delegate(object s, MouseEventArgs e) { statusForm.Close(); };
             foreach (Control c in statusForm.Controls)
-                c.Click += delegate { statusForm.Close(); };
+                c.MouseClick += delegate(object s, MouseEventArgs e) { statusForm.Close(); };
 
             // 无边框窗体手动画一圈细边框，避免和白背景融在一起
             statusForm.Paint += delegate(object s, PaintEventArgs e)
