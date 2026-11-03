@@ -37,6 +37,14 @@ namespace CNLC
         private const string RunKeyPath = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
         private const string RunName = "CNLC";
         private const string YuketangUrl = "https://sycu.yuketang.cn/pro/portal/home/";   // 雨课堂网页版入口
+
+        // 软件简介（"?"按钮弹出）
+        private const string AboutText =
+            "校园内网登录器（CNLC）是一款面向校园网 Portal 认证环境的 Windows 托盘工具，" +
+            "解决学校教室希沃大屏\"每次联网都要手动打开网页输账号密码、打开雨课堂网页版需要手工输入网址\"的痛点。\n\n" +
+            "程序启动后常驻系统托盘：一键完成 Portal 认证；支持断网后每 30 秒自动检测并重新认证；" +
+            "支持记住密码、开机自登录——开机即联网，全程无感；点击\"雨课堂网页版\"按钮，一键直达学校雨课堂门户，无需手工输入网址。\n\n" +
+            "整个程序为单个 exe 文件，绿色免安装，在本地配置好账号密码后，拷贝程序所在文件夹到 U 盘即可在任意实验室/办公室电脑使用。";
         // 通知总开关：false = 关闭所有弹动提示（浮条/托盘气泡），完全静默，仅写日志
         private static readonly bool ShowNotify = false;
 
@@ -55,6 +63,7 @@ namespace CNLC
         private static string portalPass = "";
         private static Form loginForm;
         private static Form statusForm;
+        private static Form aboutForm;
         private static readonly CookieContainer cookies = new CookieContainer();
 
         // 登录窗口控件（事件处理器需要访问）
@@ -343,6 +352,14 @@ namespace CNLC
             btnYuketang.Location = new Point(165, 178);
             btnYuketang.Size = new Size(115, 26);
 
+            // 右下角"?"小按钮：打开软件简介窗
+            Button btnAbout = new Button();
+            btnAbout.Text = "?";
+            btnAbout.Location = new Point(288, 178);
+            btnAbout.Size = new Size(26, 26);
+            loginForm.Controls.Add(btnAbout);
+            btnAbout.Click += delegate { ShowAbout(); };
+
             loginForm.Controls.Add(lblUser);
             loginForm.Controls.Add(txtUser);
             loginForm.Controls.Add(lblPass);
@@ -439,6 +456,10 @@ namespace CNLC
                 // 右列上下对齐：按钮与"断网自动重连"复选框同左边缘、同宽度，行距与左列一致
                 btnYuketang.Left = chkGuard.Left;
                 btnYuketang.Width = chkGuard.Width;
+                // "?"按钮贴住"雨课堂网页版"右侧，同行等高
+                btnAbout.Left = btnYuketang.Right + 6;
+                btnAbout.Top = btnYuketang.Top;
+                btnAbout.Height = btnYuketang.Height;
                 txtUser.Left = lblUser.Right + 6;
                 txtUser.Width = btnLogin.Left - txtUser.Left - 8;
                 txtPass.Left = lblPass.Right + 6;
@@ -806,6 +827,55 @@ namespace CNLC
             tf.ShowDialog();
             t.Stop();
             t.Dispose();
+        }
+
+        // ================= 软件简介窗 =================
+
+        private static void ShowAbout()
+        {
+            if (aboutForm != null && !aboutForm.IsDisposed) { aboutForm.Activate(); return; }
+            aboutForm = new Form();
+            aboutForm.Text = "软件简介";
+            aboutForm.ClientSize = new Size(368, 296);
+            aboutForm.FormBorderStyle = FormBorderStyle.None;
+            aboutForm.StartPosition = FormStartPosition.CenterScreen;
+            aboutForm.TopMost = true;
+            aboutForm.BackColor = Color.White;
+            aboutForm.AutoScaleMode = AutoScaleMode.Dpi;
+            aboutForm.AutoScaleDimensions = new SizeF(96F, 96F);
+
+            Label title = NewLabel("软件简介", 20, 12);
+            title.Font = new Font(FontFamily.GenericSansSerif, 10, FontStyle.Bold);
+            aboutForm.Controls.Add(title);
+
+            Label body = new Label();
+            body.Text = AboutText;
+            body.Location = new Point(18, 44);
+            body.Size = new Size(332, 214);
+            aboutForm.Controls.Add(body);
+
+            Label foot = NewLabel("版本 " + AppVersion + "    作者 " + AppAuthor, 18, 266);
+            foot.ForeColor = Color.FromArgb(110, 110, 110);
+            aboutForm.Controls.Add(foot);
+
+            // 点击窗口内任意处或按任意键关闭（单实例守卫：FormClosed 清引用）
+            aboutForm.KeyPreview = true;
+            aboutForm.KeyDown += delegate(object s, KeyEventArgs e) { aboutForm.Close(); };
+            aboutForm.MouseClick += delegate(object s, MouseEventArgs e) { aboutForm.Close(); };
+            foreach (Control c in aboutForm.Controls)
+                c.MouseClick += delegate(object s, MouseEventArgs e) { aboutForm.Close(); };
+
+            aboutForm.Paint += delegate(object s, PaintEventArgs e)
+            {
+                e.Graphics.DrawRectangle(new Pen(Color.FromArgb(120, 120, 120)),
+                    0, 0, aboutForm.ClientSize.Width - 1, aboutForm.ClientSize.Height - 1);
+            };
+            aboutForm.FormClosed += delegate
+            {
+                try { aboutForm.Dispose(); } catch { }
+                aboutForm = null;
+            };
+            aboutForm.ShowDialog();
         }
 
         // ================= 认证核心 =================
