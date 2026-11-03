@@ -5,7 +5,8 @@
 //  针对沈阳城市学院校园网（1.1.1.3 portal 认证）定制
 //  功能：登录窗口 / 托盘守护 / 断网自动重连 / 记住密码(跨电脑) /
 //        开机自登录(自启动+静默) / 雨课堂网页版快捷入口 / 注销 / 状态窗口
-//  版本：1.3.3
+//  说明：不生成日志与状态文件，保持程序目录干净（状态显示用内存记录）
+//  版本：1.3.4
 //  作者：Bro.Cui
 //  编译：由 Build-Exe.ps1 调用 Windows 自带的 csc.exe 完成
 // ==================================================================
@@ -25,7 +26,7 @@ namespace CNLC
     internal static class App
     {
         // ---------- 配置常量 ----------
-        internal const string AppVersion = "1.3.3";   // 版本号（仅代码内部使用，不显示在界面）
+        internal const string AppVersion = "1.3.4";   // 版本号（仅代码内部使用，不显示在界面）
         internal const string AppAuthor = "Bro.Cui";  // 作者
         private const string PortalHost = "http://1.1.1.3";
         private const string PortalLoginPage = PortalHost + "/ac_portal/20240318141412/pc.html";
@@ -40,8 +41,6 @@ namespace CNLC
         private static readonly bool ShowNotify = false;
 
         private static readonly string BaseDir = AppDomain.CurrentDomain.BaseDirectory;
-        private static readonly string LogDir = Path.Combine(BaseDir, "logs");
-        private static readonly string StateFile = Path.Combine(BaseDir, "auto_login_status.txt");
         private static readonly string CredFile = Path.Combine(BaseDir, "CNLC.dat");
 
         // ---------- 运行状态 ----------
@@ -89,7 +88,6 @@ namespace CNLC
             try { SetProcessDPIAware(); } catch { }
             try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072 | SecurityProtocolType.Tls; } catch { }
             WebRequest.DefaultWebProxy = new WebProxy();   // 强制直连，绕过本地 VPN/代理
-            Directory.CreateDirectory(LogDir);
 
             bool autoStart = false;
             foreach (string a in args)
@@ -703,19 +701,6 @@ namespace CNLC
                 return;
             }
             bool offline = TestOffline();
-            string lastCheck = "", lastLogin = "";
-            try
-            {
-                if (File.Exists(StateFile))
-                {
-                    string c = File.ReadAllText(StateFile);
-                    Match m = Regex.Match(c, "\"last_check\"\\s*:\\s*\"([^\"]*)\"");
-                    if (m.Success) lastCheck = m.Groups[1].Value;
-                    m = Regex.Match(c, "\"last_login_at\"\\s*:\\s*\"([^\"]*)\"");
-                    if (m.Success) lastLogin = m.Groups[1].Value;
-                }
-            }
-            catch { }
 
             statusForm = new Form();
             statusForm.Text = "运行状态";
@@ -736,8 +721,8 @@ namespace CNLC
                 "当前账号：" + portalUser,
                 "网络状态：" + (offline ? "已断网" : "在线"),
                 "检测间隔：" + CheckIntervalSec + " 秒",
-                "最近检测：" + lastCheck,
-                "最近登录：" + lastLogin
+                "最近检测：" + (lastCheckTime.Length > 0 ? lastCheckTime : "本次运行尚未检测"),
+                "最近登录：" + (lastLoginTime.Length > 0 ? lastLoginTime : "本次运行尚未登录")
             };
             int y = 42;
             foreach (string t in lines)
@@ -829,14 +814,7 @@ namespace CNLC
 
         private static void Log(string msg)
         {
-            try
-            {
-                string line = "[" + Now() + "] " + msg;
-                File.AppendAllText(
-                    Path.Combine(LogDir, "auto_login_" + DateTime.Now.ToString("yyyyMMdd") + ".log"),
-                    line + Environment.NewLine, Encoding.UTF8);
-            }
-            catch { }
+            // 已按需求取消日志文件生成（保持程序目录干净）；保留函数避免改动所有调用点
         }
 
         private static void Balloon(string message, bool warning)
@@ -974,23 +952,14 @@ namespace CNLC
 
         // ================= 状态 / 凭据 / 自启动 =================
 
+        // 运行状态（内存记录，供状态窗显示；程序重启后清零）
+        private static string lastCheckTime = "";
+        private static string lastLoginTime = "";
+
         private static void SaveState(bool loginSuccess)
         {
-            string prev = "";
-            try
-            {
-                if (File.Exists(StateFile))
-                {
-                    string c = File.ReadAllText(StateFile);
-                    Match m = Regex.Match(c, "\"last_login_at\"\\s*:\\s*\"([^\"]*)\"");
-                    if (m.Success) prev = m.Groups[1].Value;
-                }
-            }
-            catch { }
-            string now = Now();
-            string content = "{\n  \"last_check\": \"" + now + "\",\n  \"online_status\": \"ONLINE\",\n  \"last_login_at\": \"" +
-                             (loginSuccess ? now : prev) + "\"\n}";
-            try { File.WriteAllText(StateFile, content, Encoding.UTF8); } catch { }
+            lastCheckTime = Now();
+            if (loginSuccess) lastLoginTime = Now();
         }
 
         private static void LoadCreds()
