@@ -55,6 +55,11 @@ namespace CNLC
         private static readonly string BaseDir = AppDomain.CurrentDomain.BaseDirectory;
         private static readonly string CredFile = Path.Combine(BaseDir, "CNLC.dat");
 
+        // 诊断模式（默认关，保持零残留）：在 exe 旁新建空文件 debug.on 即开启，
+        // 开启后写 logs/auto_login_日期.log，用于排查个别教室环境无法认证的问题
+        private static readonly bool DebugMode = File.Exists(Path.Combine(BaseDir, "debug.on"));
+        private static readonly string LogDir = Path.Combine(BaseDir, "logs");
+
         // ---------- 运行状态 ----------
         private static Mutex mutex;
         private static bool exiting = false;
@@ -983,7 +988,17 @@ namespace CNLC
 
         private static void Log(string msg)
         {
-            // 已按需求取消日志文件生成（保持程序目录干净）；保留函数避免改动所有调用点
+            // 仅诊断模式（exe 旁存在 debug.on 文件）才写日志，平时零残留
+            if (!DebugMode) return;
+            try
+            {
+                Directory.CreateDirectory(LogDir);
+                string line = "[" + Now() + "] " + msg;
+                File.AppendAllText(
+                    Path.Combine(LogDir, "auto_login_" + DateTime.Now.ToString("yyyyMMdd") + ".log"),
+                    line + Environment.NewLine, Encoding.UTF8);
+            }
+            catch { }
         }
 
         private static void Balloon(string message, bool warning)
@@ -1045,8 +1060,7 @@ namespace CNLC
             }
             catch (Exception ex)
             {
-                if (url.IndexOf("1.1.1.3", StringComparison.Ordinal) >= 0)
-                    Log("请求异常: " + ex.Message);
+                Log("GET " + url + " 异常: " + ex.Message);
                 return null;
             }
         }
@@ -1076,7 +1090,7 @@ namespace CNLC
             }
             catch (Exception ex)
             {
-                Log("请求异常: " + ex.Message);
+                Log("POST " + url + " 异常: " + ex.Message);
                 return null;
             }
         }
@@ -1114,7 +1128,11 @@ namespace CNLC
             try
             {
                 string s = HttpGet(ProbeUrl, 6);
-                return !(s != null && s.Contains("baidu"));
+                bool ok = s != null && s.Contains("baidu");
+                if (!ok)
+                    Log("联网探测失败" + (s == null ? "（无响应）" :
+                        "（响应前 120 字: " + s.Substring(0, Math.Min(120, s.Length)).Replace("\n", " ").Replace("\r", "") + "）"));
+                return !ok;
             }
             catch { return true; }
         }
