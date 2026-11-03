@@ -148,34 +148,15 @@ namespace CNLC
         private static Label minBtn;
         private static Label closeBtn;
 
-        // Windows 个性化强调色（默认 Win10 蓝），失败回退 #0078D7
-        private static Color TitleBarColor()
-        {
-            try
-            {
-                object v = Microsoft.Win32.Registry.GetValue(
-                    @"HKEY_CURRENT_USER\Software\Microsoft\Windows\DWM", "AccentColor", null);
-                if (v is int)
-                {
-                    int c = (int)v;   // 存储格式 0xAABBGGRR
-                    return Color.FromArgb(255, (c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
-                }
-            }
-            catch { }
-            return Color.FromArgb(0, 120, 215);
-        }
-
-        // 标题条固定强调色白字，激活/失焦不再变色
+        // 标题条固定白底深灰字，激活/失焦不变
         private static void ApplyTitleStyle()
         {
-            Color bg = TitleBarColor();
-            Color fg = Color.White;
-            titlePanel.BackColor = bg;
-            titleLabel.ForeColor = fg;
-            minBtn.ForeColor = fg;
-            minBtn.BackColor = bg;
-            closeBtn.ForeColor = fg;
-            closeBtn.BackColor = bg;
+            titlePanel.BackColor = Color.White;
+            titleLabel.ForeColor = Color.FromArgb(40, 40, 40);
+            minBtn.ForeColor = Color.FromArgb(60, 60, 60);
+            minBtn.BackColor = Color.White;
+            closeBtn.ForeColor = Color.FromArgb(60, 60, 60);
+            closeBtn.BackColor = Color.White;
             titlePanel.Invalidate();
         }
 
@@ -212,10 +193,7 @@ namespace CNLC
             minBtn.BackColor = Color.White;
             minBtn.Cursor = Cursors.Hand;
             minBtn.Click += delegate { EnsureTray(); loginForm.Hide(); };
-            minBtn.MouseEnter += delegate
-            {
-                minBtn.BackColor = ControlPaint.Light(TitleBarColor(), 0.3f);
-            };
+            minBtn.MouseEnter += delegate { minBtn.BackColor = Color.FromArgb(229, 229, 229); };
             minBtn.MouseLeave += delegate { ApplyTitleStyle(); };
             minBtn.Paint += delegate(object s, PaintEventArgs e)
             {
