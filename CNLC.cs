@@ -71,11 +71,16 @@ namespace CNLC
         private static string savedPass = "";
         private static bool savedAutoLogin = false;
 
+        // 高分屏（125%/150% 缩放）下让文字原生渲染，清晰不发虚
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool SetProcessDPIAware();
+
         [STAThread]
         private static void Main(string[] args)
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            try { SetProcessDPIAware(); } catch { }
             try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072 | SecurityProtocolType.Tls; } catch { }
             WebRequest.DefaultWebProxy = new WebProxy();   // 强制直连，绕过本地 VPN/代理
             Directory.CreateDirectory(LogDir);
@@ -147,6 +152,9 @@ namespace CNLC
             loginForm.MaximizeBox = false;
             loginForm.MinimizeBox = false;   // 标题栏只留 ×（最小化/最大化没用，程序就是进托盘的）
             loginForm.TopMost = true;
+            // DPI 缩放适配：坐标按系统缩放自动放大，高分屏下大小正常、文字清晰
+            loginForm.AutoScaleMode = AutoScaleMode.Dpi;
+            loginForm.AutoScaleDimensions = new SizeF(96F, 96F);
             try { loginForm.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
             // 左右分栏：左栏 = 标签+输入框（同一行），右栏 = 登录/注销上下排列
@@ -544,6 +552,8 @@ namespace CNLC
             statusForm.StartPosition = FormStartPosition.CenterScreen;
             statusForm.TopMost = true;
             statusForm.BackColor = Color.White;
+            statusForm.AutoScaleMode = AutoScaleMode.Dpi;
+            statusForm.AutoScaleDimensions = new SizeF(96F, 96F);
 
             // 无边框窗体手动绘制标题区
             Label title = NewLabel("运行状态", 20, 12);
