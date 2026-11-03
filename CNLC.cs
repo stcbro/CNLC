@@ -2,7 +2,9 @@
 //  CNLC.cs - 校园内网登录器 (Campus Network Login Client, CNLC)
 //  针对沈阳城市学院校园网（1.1.1.3 portal 认证）定制
 //  功能：登录窗口 / 托盘守护 / 断网自动重连 / 记住密码(跨电脑) /
-//        开机自启动 / 开机自登录(静默) / 注销 / 状态窗口 / Toast 提示
+//        开机自启动 / 开机自登录(静默) / 注销 / 状态窗口
+//  版本：1.3.0（定制版）
+//  作者：Bro.Cui
 //  编译：由 Build-Exe.ps1 调用 Windows 自带的 csc.exe 完成
 // ==================================================================
 
@@ -21,6 +23,8 @@ namespace CNLC
     internal static class App
     {
         // ---------- 配置常量 ----------
+        internal const string AppVersion = "1.3.0";   // 版本号（仅代码内部使用，不显示在界面）
+        internal const string AppAuthor = "Bro.Cui";  // 作者
         private const string PortalHost = "http://1.1.1.3";
         private const string PortalLoginPage = PortalHost + "/ac_portal/20240318141412/pc.html";
         private const string PortalLoginApi = PortalHost + "/ac_portal/login.php";
@@ -136,7 +140,7 @@ namespace CNLC
         private static void BuildLoginForm()
         {
             loginForm = new Form();
-            loginForm.Text = "校园内网登录器";
+            loginForm.Text = "校园内网登录器（定制版）";
             loginForm.ClientSize = new Size(320, 182);
             loginForm.FormBorderStyle = FormBorderStyle.FixedSingle;
             loginForm.StartPosition = FormStartPosition.CenterScreen;
@@ -317,7 +321,8 @@ namespace CNLC
         {
             if (tray != null) return;
 
-            Log("校园内网登录器已启动（托盘守护）");
+            Log("校园内网登录器（定制版）已启动（托盘守护）");
+            Log("版本: " + AppVersion + "   作者: " + AppAuthor);
             Log("账号: " + portalUser + "   检测间隔: " + CheckIntervalSec + "s");
             Log("目标服务器: " + PortalHost + "   登录接口: " + PortalLoginApi);
 
