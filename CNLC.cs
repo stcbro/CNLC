@@ -200,13 +200,17 @@ namespace CNLC
             titlePanel.Dock = DockStyle.Top;
             titlePanel.Height = 32;
             titlePanel.BackColor = Color.White;
-            Icon titleIcon = null;
-            try { titleIcon = new Icon(Application.ExecutablePath, 16, 16); } catch { }
-            Icon iconForPaint = titleIcon;
+            Bitmap titleBmp = null;
+            try
+            {
+                using (Icon ti = new Icon(Application.ExecutablePath)) titleBmp = ti.ToBitmap();
+            }
+            catch { }
+            Bitmap iconForPaint = titleBmp;
             titlePanel.Paint += delegate(object s, PaintEventArgs e)
             {
-                // 程序图标；分隔线只在失焦（白底）状态画
-                if (iconForPaint != null) e.Graphics.DrawIcon(iconForPaint, 10, 8);
+                // 程序图标（缩放为 16×16）；分隔线只在失焦（白底）状态画
+                if (iconForPaint != null) e.Graphics.DrawImage(iconForPaint, 10, 8, 16, 16);
                 if (!titleActive)
                     e.Graphics.DrawLine(new Pen(Color.FromArgb(225, 225, 225)),
                         0, titlePanel.Height - 1, titlePanel.Width, titlePanel.Height - 1);
