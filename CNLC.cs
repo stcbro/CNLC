@@ -295,31 +295,36 @@ namespace CNLC
                 Log("账号已切换为 " + u);
             }
 
+            bool ok = PortalLogin();
+            System.Threading.Thread.Sleep(800);
+            bool online = !TestOffline();
+
             if (chkGuard.Checked)
             {
-                // 登录 + 开启守护：隐藏窗口，立即认证并进入守护
-                loginForm.Hide();
-                GuardStart();
+                // 守护开关已勾选：认证已在上面完成，这里只启动守护循环（失败时下个周期自动重试）
+                EnsureTray();
+                GuardOn = true;
+                if (miGuard != null) miGuard.Checked = true;
+                if (timer != null) timer.Start();
+            }
+
+            if (ok && online)
+            {
+                ExtendedRetry = false;
+                SaveState(true);
+                Log("登录成功，网络已恢复 !");
+                ShowLoginResult("登录成功，网络已恢复", false);
+            }
+            else if (ok && !online)
+            {
+                ShowLoginResult("认证已提交，但网络暂未连通，请稍候重试", true);
             }
             else
             {
-                // 仅登录：只认证上网，不开守护（窗口保持打开，浮条提示自动消失）
-                Log("正在登录认证（仅登录，守护未开启）...");
-                PortalLogin();
-                System.Threading.Thread.Sleep(1000);
-                if (TestOffline())
-                {
-                    Log("登录未成功：服务器可能暂时拒绝，请稍后重试或检查账号密码。");
-                    Toast("登录未成功，请稍后重试", true);
-                }
-                else
-                {
-                    ExtendedRetry = false;
-                    SaveState(true);
-                    Log("登录成功，网络已恢复！（守护未开启）");
-                    Toast("登录成功，网络已恢复", false);
-                    if (tray != null) Balloon("登录成功，网络已恢复！（守护未开启）", false);
-                }
+                string reason = lastLoginMsg.Length > 0 ? lastLoginMsg
+                    : "无法连接认证服务器，请确认已接入校园网";
+                Log("登录失败：" + reason);
+                ShowLoginResult("登录失败：" + reason, true);
             }
         }
 
@@ -597,13 +602,16 @@ namespace CNLC
             statusForm.ShowDialog();
         }
 
-        private static void Toast(string message, bool isError)
+        private static void ShowLoginResult(string message, bool isError)
         {
-            if (!ShowNotify) return;
+            // 登录结果反馈：用户主动点击登录的提示，不受后台静默开关（ShowNotify）影响
+            // 显示在屏幕顶部中央，3 秒后自动消失，不打遮挡登录窗口
             Form tf = new Form();
             tf.FormBorderStyle = FormBorderStyle.None;
-            tf.StartPosition = FormStartPosition.CenterScreen;
-            tf.Size = new Size(300, 52);
+            tf.StartPosition = FormStartPosition.Manual;
+            Rectangle wa = Screen.PrimaryScreen.WorkingArea;
+            tf.Size = new Size(360, 56);
+            tf.Location = new Point(wa.Left + (wa.Width - tf.Width) / 2, wa.Top + 80);
             tf.TopMost = true;
             tf.ShowInTaskbar = false;
             tf.BackColor = isError ? Color.FromArgb(198, 40, 40) : Color.FromArgb(46, 125, 50);
@@ -615,7 +623,7 @@ namespace CNLC
             lb.AutoSize = false;
             tf.Controls.Add(lb);
             System.Windows.Forms.Timer t = new System.Windows.Forms.Timer();
-            t.Interval = 2500;
+            t.Interval = 3000;
             t.Tick += delegate { tf.Close(); };
             t.Start();
             tf.ShowDialog();
@@ -737,8 +745,11 @@ namespace CNLC
             }
         }
 
+        private static string lastLoginMsg = "";   // 最近一次登录失败时 portal 返回的原因
+
         private static bool PortalLogin()
         {
+            lastLoginMsg = "";
             string rckey = UnixMillis().ToString();
             string enc = Rc4Hex(portalPass, rckey);
             string body = "opr=pwdLogin&userName=" + Uri.EscapeDataString(portalUser) +
@@ -746,7 +757,12 @@ namespace CNLC
             HttpGet(PortalLoginPage, 8);   // 先取会话 cookie
             string resp = HttpPost(PortalLoginApi, body, 15, PortalLoginPage);
             if (resp != null && Regex.IsMatch(resp, "\"success\"\\s*:\\s*true")) return true;
-            if (resp != null) Log("登录返回: " + resp);
+            if (resp != null)
+            {
+                Log("登录返回: " + resp);
+                Match m = Regex.Match(resp, "\"message\"\\s*:\\s*\"([^\"]*)\"");
+                if (m.Success) lastLoginMsg = m.Groups[1].Value;
+            }
             return false;
         }
 
