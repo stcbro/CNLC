@@ -88,6 +88,8 @@ namespace CNLC
         private static CheckBox chkGuard;
         private static CheckBox chkAutoLogin;
         private static Button btnYuketang;
+        private static Button btnLogin;
+        private static Button btnLogout;
         private static bool suppressGuard = false;
         private static bool suppressAutoLogin = false;
 
@@ -103,6 +105,29 @@ namespace CNLC
         // 查询物理按键全局按下状态（用于状态窗"屏幕任意点击/按键即关闭"）
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern short GetAsyncKeyState(int vKey);
+
+        // ---------- 后台线程 / UI 调度 ----------
+        // 网络请求（认证/探测/注销，最坏 10~20 秒超时）必须放后台线程，
+        // 否则外网等不可达环境下 UI 线程被阻塞，表现为"程序卡死"（已实测）
+        private static System.Threading.SynchronizationContext _uiCtx;
+
+        private static void RunBg(ThreadStart work)
+        {
+            System.Threading.Thread t = new System.Threading.Thread(work);
+            t.IsBackground = true;
+            t.Start();
+        }
+
+        // 切回 UI 线程执行（NotifyIcon/控件/浮条等只能在 UI 线程操作）
+        private static void Ui(MethodInvoker mi)
+        {
+            try
+            {
+                if (_uiCtx != null) { _uiCtx.Post(delegate { try { mi(); } catch { } }, null); return; }
+            }
+            catch { }
+            try { mi(); } catch { }
+        }
 
         // 统一弹窗入口：指定主界面为父窗口。
         // 关键修复：主界面 TopMost=true，无父窗口的 MessageBox 会被压在主界面下层，
@@ -136,6 +161,7 @@ namespace CNLC
             try { SetProcessDPIAware(); } catch { }
             try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072 | SecurityProtocolType.Tls; } catch { }
             WebRequest.DefaultWebProxy = new WebProxy();   // 强制直连，绕过本地 VPN/代理
+            _uiCtx = System.Threading.SynchronizationContext.Current;   // UI 线程调度器（后台线程回调用）
 
             bool autoStart = false;
             foreach (string a in args)
@@ -355,7 +381,7 @@ namespace CNLC
             txtUser.Location = new Point(72, 62);
             txtUser.Size = new Size(135, 23);
 
-            Button btnLogin = new Button();
+            btnLogin = new Button();
             btnLogin.Text = "登 录";
             btnLogin.Location = new Point(225, 62);
             btnLogin.Size = new Size(72, 26);
@@ -366,7 +392,7 @@ namespace CNLC
             txtPass.Size = new Size(135, 23);
             txtPass.PasswordChar = '*';
 
-            Button btnLogout = new Button();
+            btnLogout = new Button();
             btnLogout.Text = "注 销";
             btnLogout.Location = new Point(225, 100);
             btnLogout.Size = new Size(72, 26);
@@ -517,37 +543,51 @@ namespace CNLC
                 Log("账号已切换为 " + u);
             }
 
-            bool ok = PortalLogin();
-            System.Threading.Thread.Sleep(800);
-            bool online = !TestOffline();
+            // 认证放后台线程：外网等不可达环境下请求超时可达 10~20 秒，
+            // 同步执行会冻结 UI（实测"卡死"）；期间按钮禁用并显示认证中
+            btnLogin.Enabled = false;
+            btnLogin.Text = "认证中";
+            btnLogout.Enabled = false;
+            RunBg(delegate
+            {
+                bool ok = PortalLogin();
+                System.Threading.Thread.Sleep(800);
+                bool online = !TestOffline();
+                Ui(delegate
+                {
+                    btnLogin.Enabled = true;
+                    btnLogin.Text = "登 录";
+                    btnLogout.Enabled = true;
 
-            if (chkGuard.Checked)
-            {
-                // 守护开关已勾选：认证已在上面完成，这里只启动守护循环（失败时下个周期自动重试）
-                EnsureTray();
-                GuardOn = true;
-                if (miGuard != null) miGuard.Checked = true;
-                if (timer != null) timer.Start();
-            }
+                    if (chkGuard.Checked)
+                    {
+                        // 守护开关已勾选：认证已在上面完成，这里只启动守护循环（失败时下个周期自动重试）
+                        EnsureTray();
+                        GuardOn = true;
+                        if (miGuard != null) miGuard.Checked = true;
+                        if (timer != null) timer.Start();
+                    }
 
-            if (ok && online)
-            {
-                ExtendedRetry = false;
-                SaveState(true);
-                Log("登录成功，网络已恢复 !");
-                ShowLoginResult("登录成功，网络已恢复", false);
-            }
-            else if (ok && !online)
-            {
-                ShowLoginResult("认证已提交，但网络暂未连通，请稍候重试", true);
-            }
-            else
-            {
-                string reason = lastLoginMsg.Length > 0 ? lastLoginMsg
-                    : "无法连接认证服务器，请确认已接入校园网";
-                Log("登录失败：" + reason);
-                ShowLoginResult("登录失败：" + reason, true);
-            }
+                    if (ok && online)
+                    {
+                        ExtendedRetry = false;
+                        SaveState(true);
+                        Log("登录成功，网络已恢复 !");
+                        ShowLoginResult("登录成功，网络已恢复", false);
+                    }
+                    else if (ok && !online)
+                    {
+                        ShowLoginResult("认证已提交，但网络暂未连通，请稍候重试", true);
+                    }
+                    else
+                    {
+                        string reason = lastLoginMsg.Length > 0 ? lastLoginMsg
+                            : "无法连接认证服务器，请确认已接入校园网";
+                        Log("登录失败：" + reason);
+                        ShowLoginResult("登录失败：" + reason, true);
+                    }
+                });
+            });
         }
 
         // ================= 托盘守护 =================
@@ -611,27 +651,30 @@ namespace CNLC
         private static void GuardStart()
         {
             EnsureTray();
-
-            // 点登录后：跳过联网检测等待，直接立即发认证请求，一步到位上网
-            Log("正在立即登录认证（跳过检测）...");
-            PortalLogin();
-            System.Threading.Thread.Sleep(1000);
-            if (TestOffline())
-            {
-                Log("立即认证未恢复，转入自动重试 ...");
-                ReloginLoop();
-            }
-            else
-            {
-                Log("登录成功，网络已恢复 !");
-                ExtendedRetry = false;
-                SaveState(true);
-                Balloon("登录成功，网络已恢复！", false);
-            }
-
             GuardOn = true;
             if (miGuard != null) miGuard.Checked = true;
-            timer.Start();
+            if (timer != null) timer.Start();
+
+            // 立即认证放后台线程（不可达环境下超时可达 10~20 秒，不能冻结 UI）
+            RunBg(delegate
+            {
+                // 点登录后：跳过联网检测等待，直接立即发认证请求，一步到位上网
+                Log("正在立即登录认证（跳过检测）...");
+                PortalLogin();
+                System.Threading.Thread.Sleep(1000);
+                if (TestOffline())
+                {
+                    Log("立即认证未恢复，转入自动重试 ...");
+                    ReloginLoop();
+                }
+                else
+                {
+                    Log("登录成功，网络已恢复 !");
+                    ExtendedRetry = false;
+                    SaveState(true);
+                    Ui(delegate { Balloon("登录成功，网络已恢复！", false); });
+                }
+            });
         }
 
         private static void StopGuard()
@@ -649,21 +692,34 @@ namespace CNLC
             else { StopGuard(); }
         }
 
+        private static int tickBusy = 0;   // 防止上轮后台检测未完成时重复进入
+
         private static void Tick()
         {
-            string now = Now();
-            bool wasOffline = TestOffline();
-            if (wasOffline)
+            // 检测与重连循环放后台线程（断网时 ReloginLoop 可达数分钟，不能冻结 UI）
+            if (System.Threading.Interlocked.CompareExchange(ref tickBusy, 1, 0) != 0) return;
+            RunBg(delegate
             {
-                Balloon("检测到断网，正在自动重新认证 ...", true);
-                ReloginLoop();
-                if (!TestOffline()) Balloon("登录成功，网络已恢复！", false);
-            }
-            else
-            {
-                Log("网络正常，无需操作 ...");
-                SaveState(false);
-            }
+                try
+                {
+                    bool wasOffline = TestOffline();
+                    if (wasOffline)
+                    {
+                        Ui(delegate { Balloon("检测到断网，正在自动重新认证 ...", true); });
+                        ReloginLoop();
+                        if (!TestOffline()) Ui(delegate { Balloon("登录成功，网络已恢复！", false); });
+                    }
+                    else
+                    {
+                        Log("网络正常，无需操作 ...");
+                        SaveState(false);
+                    }
+                }
+                finally
+                {
+                    System.Threading.Interlocked.Exchange(ref tickBusy, 0);
+                }
+            });
         }
 
         private static void ReloginLoop()
@@ -706,20 +762,28 @@ namespace CNLC
 
             portalUser = target;
             StopGuard();
-            bool ok = PortalLogout();
-            if (ok)
+            btnLogout.Enabled = false;
+            RunBg(delegate
             {
-                // portal 服务器注销后有短暂冷却期 → 开启加密重试模式
-                ExtendedRetry = true;
-                Log("注销成功（" + target + "），网络已断开。");
-                Balloon("账号 " + target + " 已注销，网络已断开", false);
-                if (tray != null) tray.Text = "校园内网登录器 - 已注销";
-            }
-            else
-            {
-                Log("注销请求未成功（可能已离线或被服务器拒绝）");
-                Balloon("注销请求未成功（可能已离线）", true);
-            }
+                bool ok = PortalLogout();
+                Ui(delegate
+                {
+                    btnLogout.Enabled = true;
+                    if (ok)
+                    {
+                        // portal 服务器注销后有短暂冷却期 → 开启加密重试模式
+                        ExtendedRetry = true;
+                        Log("注销成功（" + target + "），网络已断开。");
+                        Balloon("账号 " + target + " 已注销，网络已断开", false);
+                        if (tray != null) tray.Text = "校园内网登录器 - 已注销";
+                    }
+                    else
+                    {
+                        Log("注销请求未成功（可能已离线或被服务器拒绝）");
+                        Balloon("注销请求未成功（可能已离线）", true);
+                    }
+                });
+            });
             // 保留输入框中用户正在输入的账号密码，不回填旧值
         }
 
@@ -927,15 +991,12 @@ namespace CNLC
                     body.Size = new Size(inner, ts.Height + 6);
                 }
                 catch { }
-                // 底部行：版权与按钮相邻成组、整体居中（行业惯例，避免两端甩开显得松散）
+                // 底部行：版权贴左无缩进，检查更新按钮贴右不动
                 try
                 {
-                    int gap = 10;
-                    int groupW = foot.Width + gap + btnUpdate.Width;
                     int rowY = body.Bottom + 12;
-                    int groupX = Math.Max(10, (aboutForm.ClientSize.Width - groupW) / 2);
-                    foot.Location = new Point(groupX, rowY + (btnUpdate.Height - foot.Height) / 2);
-                    btnUpdate.Location = new Point(groupX + foot.Width + gap, rowY);
+                    foot.Location = new Point(body.Left, rowY + (btnUpdate.Height - foot.Height) / 2);
+                    btnUpdate.Location = new Point(aboutForm.ClientSize.Width - btnUpdate.Width - body.Left, rowY);
                     aboutForm.ClientSize = new Size(aboutForm.ClientSize.Width, rowY + btnUpdate.Height + 12);
                 }
                 catch { }
@@ -1155,8 +1216,8 @@ namespace CNLC
             string enc = Rc4Hex(portalPass, rckey);
             string body = "opr=pwdLogin&userName=" + Uri.EscapeDataString(portalUser) +
                           "&pwd=" + enc + "&auth_tag=" + rckey + "&rememberPwd=0";
-            HttpGet(PortalLoginPage, 8);   // 先取会话 cookie
-            string resp = HttpPost(PortalLoginApi, body, 15, PortalLoginPage);
+            HttpGet(PortalLoginPage, 4);   // 先取会话 cookie（不可达环境快速失败）
+            string resp = HttpPost(PortalLoginApi, body, 8, PortalLoginPage);
             if (resp != null && Regex.IsMatch(resp, "\"success\"\\s*:\\s*true")) return true;
             if (resp != null)
             {
@@ -1169,7 +1230,7 @@ namespace CNLC
 
         private static bool PortalLogout()
         {
-            string resp = HttpPost(PortalLoginApi, "opr=logout", 15, PortalLoginPage);
+            string resp = HttpPost(PortalLoginApi, "opr=logout", 8, PortalLoginPage);
             Log("注销返回: " + (resp == null ? "无响应" : resp));
             return resp != null && Regex.IsMatch(resp, "\"success\"\\s*:\\s*true");
         }
