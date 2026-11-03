@@ -148,8 +148,8 @@ namespace CNLC
         private static Label minBtn;
         private static Label closeBtn;
 
-        // 标题条固定浅浅蓝底（比主界面白底稍深一档），激活/失焦不变
-        private static readonly Color TitleBarBack = Color.FromArgb(233, 242, 252);
+        // 标题条底色：与白色主界面同系但稍深，形成微妙的分界
+        private static readonly Color TitleBarBack = Color.FromArgb(245, 245, 245);
 
         private static void ApplyTitleStyle()
         {
@@ -215,7 +215,7 @@ namespace CNLC
             minBtn.BackColor = TitleBarBack;
             minBtn.Cursor = Cursors.Hand;
             minBtn.Click += delegate { EnsureTray(); loginForm.Hide(); };
-            minBtn.MouseEnter += delegate { minBtn.BackColor = Color.FromArgb(215, 231, 247); };
+            minBtn.MouseEnter += delegate { minBtn.BackColor = Color.FromArgb(226, 226, 226); };
             minBtn.MouseLeave += delegate { ApplyTitleStyle(); };
             minBtn.Paint += delegate(object s, PaintEventArgs e)
             {
