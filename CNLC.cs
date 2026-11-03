@@ -1,9 +1,11 @@
 // ==================================================================
-//  CNLC.cs - 校园内网登录器 (Campus Network Login Client, CNLC)
+//  CILC-CE - 校园内网登录器（土木定制版）
+//  Campus Intranet Login Client (Civil Engineering Custom Edition)
+//  简称：CILC-CE（工程代号 CNLC）
 //  针对沈阳城市学院校园网（1.1.1.3 portal 认证）定制
 //  功能：登录窗口 / 托盘守护 / 断网自动重连 / 记住密码(跨电脑) /
 //        开机自启动 / 开机自登录(静默) / 注销 / 状态窗口
-//  版本：1.3.0（定制版）
+//  版本：1.3.1（定制版）
 //  作者：Bro.Cui
 //  编译：由 Build-Exe.ps1 调用 Windows 自带的 csc.exe 完成
 // ==================================================================
@@ -23,7 +25,7 @@ namespace CNLC
     internal static class App
     {
         // ---------- 配置常量 ----------
-        internal const string AppVersion = "1.3.0";   // 版本号（仅代码内部使用，不显示在界面）
+        internal const string AppVersion = "1.3.1";   // 版本号（仅代码内部使用，不显示在界面）
         internal const string AppAuthor = "Bro.Cui";  // 作者
         private const string PortalHost = "http://1.1.1.3";
         private const string PortalLoginPage = PortalHost + "/ac_portal/20240318141412/pc.html";
@@ -102,7 +104,7 @@ namespace CNLC
             }
             if (!createdNew)
             {
-                MessageBox.Show("校园内网登录器已在运行（右下角托盘图标）。\n\n如需切换账号，请先右键托盘图标退出，再重新启动。", "提示");
+                MessageBox.Show("校园内网登录器（土木定制版）已在运行（右下角托盘图标）。\n\n如需切换账号，请先右键托盘图标退出，再重新启动。", "提示");
                 return;
             }
 
@@ -166,7 +168,7 @@ namespace CNLC
         {
             // 无边框 + 自绘标题条（只有 － 和 ×，无系统 □；最小化悬停提示可自定义）
             loginForm = new Form();
-            loginForm.Text = "校园内网登录器（定制版）";
+            loginForm.Text = "校园内网登录器（土木定制版）";
             loginForm.ClientSize = new Size(320, 212);
             loginForm.FormBorderStyle = FormBorderStyle.None;
             loginForm.StartPosition = FormStartPosition.CenterScreen;
@@ -202,7 +204,7 @@ namespace CNLC
                 }
             };
 
-            titleLabel = NewLabel("校园内网登录器（定制版）", 32, 8);
+            titleLabel = NewLabel("校园内网登录器（土木定制版）", 32, 8);
             titleLabel.ForeColor = Color.FromArgb(40, 40, 40);
             titleLabel.Font = new Font("Microsoft YaHei UI", 9F);
             titlePanel.Controls.Add(titleLabel);
@@ -472,7 +474,7 @@ namespace CNLC
         {
             if (tray != null) return;
 
-            Log("校园内网登录器（定制版）已启动（托盘守护）");
+            Log("校园内网登录器（土木定制版）已启动（托盘守护）");
             Log("版本: " + AppVersion + "   作者: " + AppAuthor);
             Log("账号: " + portalUser + "   检测间隔: " + CheckIntervalSec + "s");
             Log("目标服务器: " + PortalHost + "   登录接口: " + PortalLoginApi);
@@ -796,7 +798,7 @@ namespace CNLC
             if (tray == null) return;
             try
             {
-                tray.ShowBalloonTip(4000, "校园内网登录器", message,
+                tray.ShowBalloonTip(4000, "校园内网登录器（土木定制版）", message,
                     warning ? ToolTipIcon.Warning : ToolTipIcon.Info);
             }
             catch { }
