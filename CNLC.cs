@@ -39,7 +39,7 @@ namespace CNLC
         private const string YuketangUrl = "https://sycu.yuketang.cn/pro/portal/home/";   // 雨课堂网页版入口
         // 更新检查走 Gitee Release 发布制：只有作者手动创建的 Release 才对用户可见，
         // main 分支的日常提交不影响用户端
-        private const string UpdateJsonUrl = "https://gitee.com/stcbro/CNLC/raw/master/update.json";   // 更新指针（与银盾 SilverShield 同机制）
+        private const string UpdateJsonUrl = "https://gitee.com/stcbro/CNLC/raw/main/update.json";   // 更新指针（与银盾 SilverShield 同机制）
         private const string ReleaseUrl = "https://gitee.com/stcbro/CNLC/releases";   // 下载页（指针缺失时兜底）
 
         // 软件简介（"关于"弹出）；中英文之间不加空格，紧凑排版
