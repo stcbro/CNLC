@@ -627,12 +627,46 @@ namespace CNLC
 
         // ================= 托盘守护 =================
 
+        // 主机指纹：计算机名 + 活动网卡 IPv4 + MAC，用于在日志中区分不同教室的电脑；
+        // IP 显示"未获取"或 169.254.x.x 时可直接定性为链路/DHCP 故障
+        private static string HostFingerprint()
+        {
+            try
+            {
+                string ip = "未获取";
+                string mac = "未知";
+                foreach (System.Net.NetworkInformation.NetworkInterface ni
+                    in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Loopback) continue;
+                    if (ni.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
+                    foreach (System.Net.NetworkInformation.UnicastIPAddressInformation a
+                        in ni.GetIPProperties().UnicastAddresses)
+                    {
+                        if (a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                        {
+                            ip = a.Address.ToString();
+                            byte[] bytes = ni.GetPhysicalAddress().GetAddressBytes();
+                            string[] parts = new string[bytes.Length];
+                            for (int i = 0; i < bytes.Length; i++) parts[i] = bytes[i].ToString("X2");
+                            mac = string.Join("-", parts);
+                            break;
+                        }
+                    }
+                    if (ip != "未获取") break;
+                }
+                return "主机: " + Environment.MachineName + "   IP: " + ip + "   MAC: " + mac;
+            }
+            catch { return "主机: " + Environment.MachineName; }
+        }
+
         private static void EnsureTray()
         {
             if (tray != null) return;
 
             Log("校园内网登录器已启动（托盘守护）");
             Log("版本: " + AppVersion + "   作者: " + AppAuthor);
+            Log(HostFingerprint());
             Log("账号: " + portalUser + "   检测间隔: " + CheckIntervalSec + "s");
             Log("目标服务器: " + PortalHost + "   登录接口: " + PortalLoginApi);
 
