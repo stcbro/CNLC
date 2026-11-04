@@ -6,7 +6,7 @@
 //  功能：登录窗口 / 托盘守护 / 断网自动重连 / 记住密码(跨电脑) /
 //        开机自登录(自启动+静默) / 雨课堂网页版快捷入口 / 注销 / 状态窗口
 //  说明：不生成日志与状态文件，保持程序目录干净（状态显示用内存记录）
-//  版本：1.3.4
+//  版本：1.4.0
 //  作者：Bro.Cui
 //  编译：由 Build-Exe.ps1 调用 Windows 自带的 csc.exe 完成
 // ==================================================================
@@ -26,7 +26,7 @@ namespace CNLC
     internal static class App
     {
         // ---------- 配置常量 ----------
-        internal const string AppVersion = "1.3.4";   // 版本号（仅代码内部使用，不显示在界面）
+        internal const string AppVersion = "1.4.0";   // 版本号（仅代码内部使用，不显示在界面）
         internal const string AppAuthor = "Bro.Cui";  // 作者
         private const string PortalHost = "http://1.1.1.3";
         private const string PortalLoginPage = PortalHost + "/ac_portal/20240318141412/pc.html";
