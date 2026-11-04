@@ -1031,7 +1031,9 @@ namespace CNLC
 
         private static void ShowLoginResult(string message, bool isError)
         {
-            // 登录结果反馈：显示在登录窗底部内层，宽度=文字+4个字符，1.5 秒后自动消失
+            // 登录结果反馈：显示在登录窗底部内层，宽度=文字+4个字符，自动消失。
+            // 时长区分：成功 1 秒（轻快确认）；失败 3 秒（带原因，需要阅读时间）
+            int duration = isError ? 3000 : 1000;
             Form tf = new Form();
             tf.FormBorderStyle = FormBorderStyle.None;
             tf.StartPosition = FormStartPosition.Manual;
@@ -1054,7 +1056,7 @@ namespace CNLC
                     loginForm.Bottom - tf.Height - 12);
             };
             System.Windows.Forms.Timer t = new System.Windows.Forms.Timer();
-            t.Interval = 1500;   // 1.5 秒自动消失，不打扰后续操作
+            t.Interval = duration;
             t.Tick += delegate { tf.Close(); };
             t.Start();
             tf.ShowDialog();
@@ -1408,7 +1410,8 @@ namespace CNLC
             if (tray == null) return;
             try
             {
-                tray.ShowBalloonTip(4000, "校园内网登录器", message,
+                // 成功类提示短显（2 秒），警告类稍长（4 秒）；Win10/11 系统可能对气泡时长有下限限制
+                tray.ShowBalloonTip(warning ? 4000 : 2000, "校园内网登录器", message,
                     warning ? ToolTipIcon.Warning : ToolTipIcon.Info);
             }
             catch { }
