@@ -1,7 +1,7 @@
 // ==================================================================
-//  CILC-CE - 校园内网登录器
-//  Campus Intranet Login Client (Civil Engineering Custom Edition)
-//  简称：CILC-CE（工程代号 CNLC）
+//  CNLC - 校园内网登录器
+//  Campus Network Login Client
+//  简称：CNLC
 //  针对高校校园网（华为 AC Portal 1.1.1.3 认证）环境定制
 //  功能：登录窗口 / 托盘守护 / 断网自动重连 / 记住密码(跨电脑) /
 //        开机自登录(自启动+静默) / 雨课堂网页版快捷入口 / 注销 / 状态窗口
@@ -37,8 +37,8 @@ namespace CNLC
         private const string RunKeyPath = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
         private const string RunName = "CNLC";
         private const string YuketangUrl = "https://sycu.yuketang.cn/pro/portal/home/";   // 雨课堂网页版入口
-        // 更新检查走 Gitee Release 发布制：只有作者手动创建的 Release 才对用户可见，
-        // main 分支的日常提交不影响用户端
+        // 更新机制：update.json 指针制（与银盾 SilverShield 一致）——创建 Release 仅归档、
+        // 对用户不可见；修改 update.json（version/url/exe/sha256）并推送才推送给用户
         private const string UpdateJsonUrl = "https://gitee.com/stcbro/CNLC/raw/main/update.json";   // 更新指针（与银盾 SilverShield 同机制）
         private const string ReleaseUrl = "https://gitee.com/stcbro/CNLC/releases";   // 下载页（指针缺失时兜底）
 
@@ -679,8 +679,7 @@ namespace CNLC
         {
             try
             {
-                string ip = "未获取";
-                string mac = "未知";
+                string ipAny = null, macAny = null, ipGw = null, macGw = null;
                 foreach (System.Net.NetworkInformation.NetworkInterface ni
                     in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
                 {
@@ -689,19 +688,26 @@ namespace CNLC
                     foreach (System.Net.NetworkInformation.UnicastIPAddressInformation a
                         in ni.GetIPProperties().UnicastAddresses)
                     {
-                        if (a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
-                        {
-                            ip = a.Address.ToString();
-                            byte[] bytes = ni.GetPhysicalAddress().GetAddressBytes();
-                            string[] parts = new string[bytes.Length];
-                            for (int i = 0; i < bytes.Length; i++) parts[i] = bytes[i].ToString("X2");
-                            mac = string.Join("-", parts);
-                            break;
-                        }
+                        if (a.Address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) continue;
+                        byte[] bytes = ni.GetPhysicalAddress().GetAddressBytes();
+                        string[] parts = new string[bytes.Length];
+                        for (int i = 0; i < bytes.Length; i++) parts[i] = bytes[i].ToString("X2");
+                        string mac = string.Join("-", parts);
+                        if (ipAny == null) { ipAny = a.Address.ToString(); macAny = mac; }
+                        // 有默认网关的网卡优先：排除 VMware/Hyper-V 等虚拟网卡（通常无网关）误选
+                        bool hasGw = false;
+                        foreach (System.Net.NetworkInformation.GatewayIPAddressInformation g
+                            in ni.GetIPProperties().GatewayAddresses)
+                            if (g.Address != null && g.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+                                && !g.Address.ToString().StartsWith("0."))
+                                hasGw = true;
+                        if (hasGw && ipGw == null) { ipGw = a.Address.ToString(); macGw = mac; }
+                        break;
                     }
-                    if (ip != "未获取") break;
                 }
-                return "主机: " + Environment.MachineName + "   IP: " + ip + "   MAC: " + mac;
+                string ip = ipGw ?? ipAny ?? "未获取";
+                string macOut = macGw ?? macAny ?? "未知";
+                return "主机: " + Environment.MachineName + "   IP: " + ip + "   MAC: " + macOut;
             }
             catch { return "主机: " + Environment.MachineName; }
         }
@@ -844,27 +850,41 @@ namespace CNLC
             });
         }
 
+        private static int reloginBusy = 0;   // 防止守护 Tick 与立即认证并发跑两条重连循环
+
         private static void ReloginLoop()
         {
-            int max = ExtendedRetry ? 40 : MaxLoginAttempts;
-            string hint = ExtendedRetry ? "（注销冷却期，服务器放行需几分钟，请耐心等待）" : "";
-            for (int att = 1; att <= max; att++)
+            if (System.Threading.Interlocked.CompareExchange(ref reloginBusy, 1, 0) != 0)
             {
-                if (PortalLogin())
-                {
-                    System.Threading.Thread.Sleep(2000);
-                    if (!TestOffline())
-                    {
-                        Log("登录成功，网络已恢复 !");
-                        ExtendedRetry = false;
-                        SaveState(true);
-                        return;
-                    }
-                }
-                Log("第 " + att + " 次认证失败，5 秒后重试" + hint + " ...");
-                System.Threading.Thread.Sleep(5000);
+                Log("已有重连循环在进行，本次跳过");
+                return;
             }
-            Log("已连续 " + max + " 次认证失败，将在下一个检测周期重试" + hint);
+            try
+            {
+                int max = ExtendedRetry ? 40 : MaxLoginAttempts;
+                string hint = ExtendedRetry ? "（注销冷却期，服务器放行需几分钟，请耐心等待）" : "";
+                for (int att = 1; att <= max; att++)
+                {
+                    if (PortalLogin())
+                    {
+                        System.Threading.Thread.Sleep(2000);
+                        if (!TestOffline())
+                        {
+                            Log("登录成功，网络已恢复 !");
+                            ExtendedRetry = false;
+                            SaveState(true);
+                            return;
+                        }
+                    }
+                    Log("第 " + att + " 次认证失败，5 秒后重试" + hint + " ...");
+                    System.Threading.Thread.Sleep(5000);
+                }
+                Log("已连续 " + max + " 次认证失败，将在下一个检测周期重试" + hint);
+            }
+            finally
+            {
+                System.Threading.Interlocked.Exchange(ref reloginBusy, 0);
+            }
         }
 
         private static void DoLogout()
@@ -942,7 +962,6 @@ namespace CNLC
                 statusForm.Activate();
                 return;
             }
-            bool offline = TestOffline();
 #if DIAG
             // 测试版：状态文件里的最近检测/登录时间优先（跨重启保留）
             try
@@ -974,9 +993,12 @@ namespace CNLC
             title.Font = new Font(FontFamily.GenericSansSerif, 10, FontStyle.Bold);
             statusForm.Controls.Add(title);
 
+            // 网络检测放后台线程：断网时探测超时 6 秒，同步执行会冻结 UI（左键托盘卡死）。
+            // 状态窗先显示"检测中 ..."，后台探测完成后回填
+            Label lbNet = null;
             string[] lines = new string[] {
                 "当前账号：" + portalUser,
-                "网络状态：" + (offline ? "已断网" : "在线"),
+                "网络状态：检测中 ...",
                 "检测间隔：" + CheckIntervalSec + " 秒",
                 "最近检测：" + (lastCheckTime.Length > 0 ? lastCheckTime : "本次运行尚未检测"),
                 "最近登录：" + (lastLoginTime.Length > 0 ? lastLoginTime : "本次运行尚未登录")
@@ -985,9 +1007,22 @@ namespace CNLC
             foreach (string t in lines)
             {
                 Label lb = NewLabel(t, 20, y);
+                if (t.StartsWith("网络状态：")) lbNet = lb;
                 statusForm.Controls.Add(lb);
                 y += 22;
             }
+
+            // 后台完成联网探测后回填网络状态（测试版顺带刷新状态文件时间戳）
+            RunBg(delegate
+            {
+                bool offlineNow = TestOffline();
+                if (!offlineNow) SaveState(false);
+                Ui(delegate
+                {
+                    if (lbNet != null && !lbNet.IsDisposed)
+                        lbNet.Text = "网络状态：" + (offlineNow ? "已断网" : "在线");
+                });
+            });
 
             // 屏幕上任意位置点击鼠标或按任意键即自动关闭：
             // 用 GetAsyncKeyState 轮询物理按键状态（全局生效，不限本窗口内）
@@ -1191,6 +1226,8 @@ namespace CNLC
             if (owner == null || owner.IsDisposed) return;
             System.Threading.Thread t = new System.Threading.Thread(delegate()
             {
+                try
+                {
                 string[] up = GetUpdatePointer();
                 string ver = up == null ? null : up[0];
                 string dl = (up != null && up[1].Length > 0) ? up[1] : ReleaseUrl;
@@ -1198,6 +1235,7 @@ namespace CNLC
                 string sha = (up == null || up.Length < 4) ? "" : up[3];
                 owner.BeginInvoke(new MethodInvoker(delegate()
                 {
+                    if (owner.IsDisposed) return;   // 等待指针响应期间窗口已被关闭
                     Version rv = null;
                     bool ok = ver != null && ver.Length > 0 &&
                               Version.TryParse(ver.TrimStart('v', 'V'), out rv);
@@ -1233,6 +1271,8 @@ namespace CNLC
                         MsgOn(owner, "当前已是最新版本 v" + AppVersion + "。", "检查更新");
                     }
                 }));
+                }
+                catch (Exception ex) { Log("检查更新线程异常: " + ex.Message); }
             });
             t.IsBackground = true;
             t.Start();
@@ -1296,6 +1336,7 @@ namespace CNLC
 
             // 重启：在 UI 线程（互斥锁持有线程）隐藏托盘、交还锁并拉起新版，然后退出。
             // 新版带 -Updated 参数：等待旧实例锁交接（最多 8 秒）→ 凭据继承 → 静默登录进托盘
+            bool started = false;
             try
             {
                 loginForm.Invoke((MethodInvoker)delegate
@@ -1303,12 +1344,20 @@ namespace CNLC
                     try { if (tray != null) tray.Visible = false; } catch { }
                     try { mutex.ReleaseMutex(); } catch { }
                     System.Diagnostics.Process.Start(exePath, "-AutoStart -Updated");
+                    started = true;
                 });
             }
             catch
             {
                 // 主界面句柄未创建（如静默登录场景）：直接拉起，新实例会等待旧锁交接
-                try { System.Diagnostics.Process.Start(exePath, "-AutoStart -Updated"); } catch { }
+                try { System.Diagnostics.Process.Start(exePath, "-AutoStart -Updated"); started = true; } catch { }
+            }
+            if (!started)
+            {
+                // 新版启动失败（如被杀软拦截）：回滚换身恢复旧版文件，避免"程序凭空消失"
+                try { if (File.Exists(exePath)) File.Delete(exePath); } catch { }
+                try { File.Move(oldPath, exePath); } catch { }
+                Ui(delegate { Balloon("新版启动失败，已恢复原版本", true); });
             }
             System.Threading.Thread.Sleep(300);
             Environment.Exit(0);
@@ -1343,9 +1392,16 @@ namespace CNLC
                 using (Stream rs = resp.GetResponseStream())
                 using (FileStream fs = new FileStream(dest, FileMode.Create, FileAccess.Write))
                 {
-                    byte[] buf = new byte[8192];
-                    int n;
-                    while ((n = rs.Read(buf, 0, buf.Length)) > 0) fs.Write(buf, 0, n);
+                byte[] buf = new byte[8192];
+                int n;
+                long total = 0;
+                while ((n = rs.Read(buf, 0, buf.Length)) > 0)
+                {
+                    total += n;
+                    // 防御：本程序 exe 远小于 5MB，超出上限视为无效/异常链接，拒绝写盘
+                    if (total > 5 * 1024 * 1024) throw new IOException("超过 5MB 上限");
+                    fs.Write(buf, 0, n);
+                }
                 }
                 return File.Exists(dest) && new FileInfo(dest).Length > 0;
             }
@@ -1514,7 +1570,8 @@ namespace CNLC
             if (resp != null)
             {
                 Log("登录返回: " + resp);
-                Match m = Regex.Match(resp, "\"message\"\\s*:\\s*\"([^\"]*)\"");
+                // portal 失败响应的原因字段实测为 "msg"（如"用户名或密码错误"），兼容 "message" 写法
+                Match m = Regex.Match(resp, "\"msg(?:essage)?\"\\s*:\\s*\"([^\"]*)\"");
                 if (m.Success) lastLoginMsg = m.Groups[1].Value;
             }
             return false;
