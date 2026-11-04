@@ -57,6 +57,13 @@ namespace CNLC
         private static readonly string StateFile = Path.Combine(BaseDir, "auto_login_status.txt");
         private static readonly string LogDir = Path.Combine(BaseDir, "logs");
 
+        // ---------- UI 缩放 ----------
+        // 9pt(12px) 默认字体在 100% 缩放的机器/大屏/投影上偏小发虚，统一放大 25%。
+        // 系数含 DPI 因子：100%/125% 系统缩放的机器均保持一致观感（字体与布局同比放大）
+        private static float uiScale = 1.25F;
+        private static int X(int v) { return (int)Math.Round(v * uiScale); }
+        private static Font UiFont() { return new Font(Control.DefaultFont.FontFamily, Control.DefaultFont.Size * uiScale); }
+
         // 日志开关：
         //   测试版（编译时 /define:DIAG，文件名 CNLC-Test.exe）：始终写日志与状态文件，作者手持排查用
         //   正式版（默认构建）：零残留；仅在 exe 旁新建空文件 debug.on 时临时写日志
@@ -198,6 +205,9 @@ namespace CNLC
                 if (string.Equals(a, "-AutoStart", StringComparison.OrdinalIgnoreCase)) autoStart = true;
                 else if (string.Equals(a, "-Updated", StringComparison.OrdinalIgnoreCase)) updatedLaunch = true;
             }
+#if DIAG
+            Log("Main 进入，args=[" + string.Join(" ", args) + "]");
+#endif
 
             // 自动更新换身自清理：删除上一轮更新留下的旧版 exe。
             // 旧实例退出前仍持有改名后的文件，删除会失败——放后台线程重试（最多约 5 秒）
@@ -250,16 +260,25 @@ namespace CNLC
             }
             if (!createdNew)
             {
+                Log("单实例锁被占用（createdNew=false），弹窗后退出");
                 Msg("校园内网登录器已在运行（右下角托盘图标）。\n\n如需切换账号，请先右键托盘图标退出，再重新启动。", "提示");
                 return;
             }
-
+#if DIAG
+            Log("互斥锁已获取，开始 LoadCreds/BuildLoginForm");
+#endif
             LoadCreds();
             BuildLoginForm();
 
 #if DIAG
+            Log("BuildLoginForm 完成，准备显示窗口");
+#endif
+
+#if DIAG
             // 测试版：启动时清理过期旧日志（保留 7 天）；正式版不编译此调用，零干扰
+            Log("CleanupOldLogs 开始");
             CleanupOldLogs();
+            Log("CleanupOldLogs 完成");
 #endif
 
             // 关键修复：WinForms 同步上下文是在第一个控件创建时才安装的（Control 构造函数内部
@@ -279,7 +298,13 @@ namespace CNLC
             }
             else
             {
+#if DIAG
+                Log("调用 loginForm.Show() ...");
+#endif
                 loginForm.Show();
+#if DIAG
+                Log("loginForm.Show() 已返回，进入消息循环");
+#endif
             }
 
             try { Application.Run(); }
@@ -326,19 +351,20 @@ namespace CNLC
             // 无边框 + 自绘标题条（只有 － 和 ×，无系统 □；最小化悬停提示可自定义）
             loginForm = new Form();
             loginForm.Text = "校园内网登录器（CNLC）";
-            loginForm.ClientSize = new Size(320, 212);
+            loginForm.ClientSize = new Size(X(320), X(212));
             loginForm.FormBorderStyle = FormBorderStyle.None;
             loginForm.StartPosition = FormStartPosition.CenterScreen;
             loginForm.TopMost = true;
             loginForm.ShowInTaskbar = false;   // 纯托盘程序，任务栏不留图标
-            loginForm.AutoScaleMode = AutoScaleMode.Dpi;
-            loginForm.AutoScaleDimensions = new SizeF(96F, 96F);
+            loginForm.AutoScaleMode = AutoScaleMode.None;   // 缩放由 X() 统一处理（含 DPI 因子），避免双重缩放
+            try { loginForm.Font = UiFont(); } catch { }
+            try { using (Graphics g = loginForm.CreateGraphics()) uiScale = 1.25F * g.DpiX / 96F; } catch { }
             try { loginForm.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
             // ---------- 自绘标题条（仿 Windows 10 原生样式）----------
             titlePanel = new Panel();
             titlePanel.Dock = DockStyle.Top;
-            titlePanel.Height = 32;
+            titlePanel.Height = X(32);
             titlePanel.BackColor = TitleBarBack;
             Bitmap titleBmp = null;
             try
@@ -357,21 +383,21 @@ namespace CNLC
                 {
                     e.Graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
                     e.Graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
-                    int iconSize = Math.Max(16, (int)Math.Round(16 * e.Graphics.DpiX / 96F));
-                    e.Graphics.DrawImage(iconForPaint, 10, (titlePanel.Height - iconSize) / 2, iconSize, iconSize);
+                    int iconSize = Math.Max(X(16), titlePanel.Height - X(14));
+                    e.Graphics.DrawImage(iconForPaint, X(10), (titlePanel.Height - iconSize) / 2, iconSize, iconSize);
                 }
             };
 
-            titleLabel = NewLabel("校园内网登录器（CNLC）", 32, 8);
+            titleLabel = NewLabel("校园内网登录器（CNLC）", X(32), X(8));
             // 标题文字与正文同字体但加粗加深，低分屏/缩放屏上不发虚
-            titleLabel.Font = new Font(Control.DefaultFont, FontStyle.Bold);
+            titleLabel.Font = new Font(loginForm.Font, FontStyle.Bold);
             titleLabel.ForeColor = Color.FromArgb(25, 25, 25);
             titlePanel.Controls.Add(titleLabel);
 
-            // 最小化按钮：46×32 贴右上，图标为画的水平细线（仿系统）
+            // 最小化按钮：贴右上，图标为画的水平细线（仿系统）
             minBtn = new Label();
-            minBtn.Size = new Size(46, 32);
-            minBtn.Location = new Point(320 - 92, 0);
+            minBtn.Size = new Size(X(46), X(32));
+            minBtn.Location = new Point(loginForm.ClientSize.Width - X(92), 0);
             minBtn.ForeColor = Color.FromArgb(60, 60, 60);
             minBtn.BackColor = TitleBarBack;
             minBtn.Cursor = Cursors.Hand;
@@ -390,8 +416,8 @@ namespace CNLC
 
             // 关闭按钮：hover 红底白线（仿系统）
             closeBtn = new Label();
-            closeBtn.Size = new Size(46, 32);
-            closeBtn.Location = new Point(320 - 46, 0);
+            closeBtn.Size = new Size(X(46), X(32));
+            closeBtn.Location = new Point(loginForm.ClientSize.Width - X(46), 0);
             closeBtn.ForeColor = Color.FromArgb(60, 60, 60);
             closeBtn.BackColor = TitleBarBack;
             closeBtn.Cursor = Cursors.Hand;
@@ -457,48 +483,48 @@ namespace CNLC
             titleLabel.MouseUp += delegate(object s, MouseEventArgs e) { dragging = false; };
 
             // ---------- 左右分栏：左栏 = 标签+输入框（同一行），右栏 = 登录/注销 ----------
-            Label lblUser = NewLabel("工号:", 20, 66);
+            Label lblUser = NewLabel("工号:", X(20), X(66));
             txtUser = new TextBox();
-            txtUser.Location = new Point(72, 62);
-            txtUser.Size = new Size(135, 23);
+            txtUser.Location = new Point(X(72), X(62));
+            txtUser.Size = new Size(X(135), X(23));
 
             btnLogin = new Button();
             btnLogin.Text = "登 录";
-            btnLogin.Location = new Point(225, 62);
-            btnLogin.Size = new Size(72, 26);
+            btnLogin.Location = new Point(X(225), X(62));
+            btnLogin.Size = new Size(X(72), X(26));
 
-            Label lblPass = NewLabel("密码:", 20, 104);
+            Label lblPass = NewLabel("密码:", X(20), X(104));
             txtPass = new TextBox();
-            txtPass.Location = new Point(72, 100);
-            txtPass.Size = new Size(135, 23);
+            txtPass.Location = new Point(X(72), X(100));
+            txtPass.Size = new Size(X(135), X(23));
             txtPass.PasswordChar = '*';
 
             btnLogout = new Button();
             btnLogout.Text = "注 销";
-            btnLogout.Location = new Point(225, 100);
-            btnLogout.Size = new Size(72, 26);
+            btnLogout.Location = new Point(X(225), X(100));
+            btnLogout.Size = new Size(X(72), X(26));
 
             chkRemember = new CheckBox();
             chkRemember.Text = "记住密码";
-            chkRemember.Location = new Point(25, 152);
+            chkRemember.Location = new Point(X(25), X(152));
             chkRemember.AutoSize = true;
 
             chkGuard = new CheckBox();
             chkGuard.Text = "断网自动重连";
-            chkGuard.Location = new Point(165, 152);
+            chkGuard.Location = new Point(X(165), X(152));
             chkGuard.AutoSize = true;
 
             // "开机自登录"（合并版）：勾选 = 开机自启动 + 开机静默登录
             chkAutoLogin = new CheckBox();
             chkAutoLogin.Text = "开机自登录";
-            chkAutoLogin.Location = new Point(25, 178);
+            chkAutoLogin.Location = new Point(X(25), X(178));
             chkAutoLogin.AutoSize = true;
 
             // "雨课堂网页版"按钮：点击打开雨课堂门户网页，同时最小化主界面到托盘
             btnYuketang = new Button();
             btnYuketang.Text = "雨课堂网页版";
-            btnYuketang.Location = new Point(165, 178);
-            btnYuketang.Size = new Size(115, 26);
+            btnYuketang.Location = new Point(X(165), X(178));
+            btnYuketang.Size = new Size(X(115), X(26));
 
             loginForm.Controls.Add(lblUser);
             loginForm.Controls.Add(txtUser);
@@ -596,10 +622,10 @@ namespace CNLC
                 // 右列上下对齐：按钮与"断网自动重连"复选框同左边缘、同宽度，行距与左列一致
                 btnYuketang.Left = chkGuard.Left;
                 btnYuketang.Width = chkGuard.Width;
-                txtUser.Left = lblUser.Right + 6;
-                txtUser.Width = btnLogin.Left - txtUser.Left - 8;
-                txtPass.Left = lblPass.Right + 6;
-                txtPass.Width = btnLogout.Left - txtPass.Left - 8;
+                txtUser.Left = lblUser.Right + X(6);
+                txtUser.Width = btnLogin.Left - txtUser.Left - X(8);
+                txtPass.Left = lblPass.Right + X(6);
+                txtPass.Width = btnLogout.Left - txtPass.Left - X(8);
             };
 
             loginForm.FormClosed += delegate { ExitApp(); };
@@ -729,6 +755,7 @@ namespace CNLC
             tray.Visible = true;
 
             ContextMenuStrip menu = new ContextMenuStrip();
+            try { menu.Font = UiFont(); } catch { }
             ToolStripMenuItem miShow = new ToolStripMenuItem("显示主界面");
             miShow.Font = new Font(miShow.Font, FontStyle.Bold);
             miShow.Click += delegate
@@ -980,17 +1007,17 @@ namespace CNLC
 
             statusForm = new Form();
             statusForm.Text = "运行状态";
-            statusForm.ClientSize = new Size(300, 158);
+            statusForm.ClientSize = new Size(X(300), X(158));
             statusForm.FormBorderStyle = FormBorderStyle.None;   // 无边框：无 - 口 X，也不放确定按钮
             statusForm.StartPosition = FormStartPosition.CenterScreen;
             statusForm.TopMost = true;
             statusForm.BackColor = Color.White;
-            statusForm.AutoScaleMode = AutoScaleMode.Dpi;
-            statusForm.AutoScaleDimensions = new SizeF(96F, 96F);
+            statusForm.AutoScaleMode = AutoScaleMode.None;
+            try { statusForm.Font = UiFont(); } catch { }
 
             // 无边框窗体手动绘制标题区
-            Label title = NewLabel("运行状态", 20, 12);
-            title.Font = new Font(FontFamily.GenericSansSerif, 10, FontStyle.Bold);
+            Label title = NewLabel("运行状态", X(20), X(12));
+            title.Font = new Font(statusForm.Font, FontStyle.Bold);
             statusForm.Controls.Add(title);
 
             // 网络检测放后台线程：断网时探测超时 6 秒，同步执行会冻结 UI（左键托盘卡死）。
@@ -1003,13 +1030,13 @@ namespace CNLC
                 "最近检测：" + (lastCheckTime.Length > 0 ? lastCheckTime : "本次运行尚未检测"),
                 "最近登录：" + (lastLoginTime.Length > 0 ? lastLoginTime : "本次运行尚未登录")
             };
-            int y = 42;
+            int y = X(42);
             foreach (string t in lines)
             {
-                Label lb = NewLabel(t, 20, y);
+                Label lb = NewLabel(t, X(20), y);
                 if (t.StartsWith("网络状态：")) lbNet = lb;
                 statusForm.Controls.Add(lb);
-                y += 22;
+                y += X(22);
             }
 
             // 后台完成联网探测后回填网络状态（测试版顺带刷新状态文件时间戳）
@@ -1077,11 +1104,12 @@ namespace CNLC
             tf.TopMost = true;
             tf.ShowInTaskbar = false;
             tf.BackColor = isError ? Color.FromArgb(198, 40, 40) : Color.FromArgb(46, 125, 50);
+            try { tf.Font = UiFont(); } catch { }
             Label lb = new Label();
             lb.Text = message;
             lb.AutoSize = true;
             lb.ForeColor = Color.White;
-            lb.Padding = new Padding(26, 8, 26, 8);   // 左右各多出约 2 个字符，共 4 字符余量
+            lb.Padding = new Padding(X(26), X(8), X(26), X(8));   // 左右各多出约 2 个字符，共 4 字符余量
             tf.Controls.Add(lb);
             // 窗口显示后（尺寸已定）定位到登录窗底部内层、水平居中，浮于主界面上层
             tf.Shown += delegate
@@ -1106,31 +1134,31 @@ namespace CNLC
             if (aboutForm != null && !aboutForm.IsDisposed) { aboutForm.Activate(); return; }
             aboutForm = new Form();
             aboutForm.Text = "关于";
-            aboutForm.ClientSize = new Size(368, 296);
+            aboutForm.ClientSize = new Size(X(368), X(296));
             aboutForm.FormBorderStyle = FormBorderStyle.None;
             aboutForm.StartPosition = FormStartPosition.CenterScreen;
             aboutForm.TopMost = true;
             aboutForm.BackColor = Color.White;
-            aboutForm.AutoScaleMode = AutoScaleMode.Dpi;
-            aboutForm.AutoScaleDimensions = new SizeF(96F, 96F);
+            aboutForm.AutoScaleMode = AutoScaleMode.None;
+            try { aboutForm.Font = UiFont(); } catch { }
 
-            Label title = NewLabel("关于校园内网登录器", 20, 12);
-            title.Font = new Font(FontFamily.GenericSansSerif, 10, FontStyle.Bold);
+            Label title = NewLabel("关于校园内网登录器", X(20), X(12));
+            title.Font = new Font(aboutForm.Font, FontStyle.Bold);
             aboutForm.Controls.Add(title);
 
             Label body = new Label();
             body.Text = AboutText;
-            body.Location = new Point(18, 44);
-            body.Size = new Size(332, 214);
+            body.Location = new Point(X(18), X(44));
+            body.Size = new Size(X(332), X(214));
             aboutForm.Controls.Add(body);
 
-            Label foot = NewLabel("v" + AppVersion + "  © " + DateTime.Now.Year + " Bro.Cui", 18, 266);
+            Label foot = NewLabel("v" + AppVersion + "  © " + DateTime.Now.Year + " Bro.Cui", X(18), X(266));
 
-            // 右下角"检查更新"按钮：联网比对 Gitee 上的 version.txt
+            // 右下角"检查更新"按钮：联网比对 update.json 更新指针
             Button btnUpdate = new Button();
             btnUpdate.Text = "检查更新";
-            btnUpdate.Location = new Point(268, 258);
-            btnUpdate.Size = new Size(84, 26);
+            btnUpdate.Location = new Point(X(268), X(258));
+            btnUpdate.Size = new Size(X(84), X(26));
             btnUpdate.Click += delegate { btnUpdate.Enabled = false; CheckUpdate(); };
             aboutForm.Controls.Add(btnUpdate);
             foot.ForeColor = Color.FromArgb(110, 110, 110);
