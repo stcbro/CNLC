@@ -216,6 +216,11 @@ namespace CNLC
             LoadCreds();
             BuildLoginForm();
 
+#if DIAG
+            // 测试版：启动时清理过期旧日志（保留 7 天）；正式版不编译此调用，零干扰
+            CleanupOldLogs();
+#endif
+
             // 关键修复：WinForms 同步上下文是在第一个控件创建时才安装的（Control 构造函数内部
             // InstallIfNeeded），而 Main 开头捕获时还没创建任何控件，_uiCtx 为 null——
             // 导致 Ui() 全部退化为"后台线程直接执行"：NotifyIcon 在无消息泵的线程创建（托盘不显示）、
@@ -762,6 +767,7 @@ namespace CNLC
         }
 
         private static int tickBusy = 0;   // 防止上轮后台检测未完成时重复进入
+        private static DateTime lastNormalLog = DateTime.MinValue;   // "网络正常"心跳降频记录用
 
         private static void Tick()
         {
@@ -780,7 +786,13 @@ namespace CNLC
                     }
                     else
                     {
-                        Log("网络正常，无需操作 ...");
+                        // 常规心跳降频：网络正常每 10 分钟记一条即可（异常/重连仍实时记录），
+                        // 避免测试版长期运行时日志每 30 秒膨胀一条
+                        if ((DateTime.Now - lastNormalLog).TotalMinutes >= 10)
+                        {
+                            Log("网络正常，无需操作 ...");
+                            lastNormalLog = DateTime.Now;
+                        }
                         SaveState(false);
                     }
                 }
@@ -1185,6 +1197,24 @@ namespace CNLC
                 File.AppendAllText(
                     Path.Combine(LogDir, "auto_login_" + DateTime.Now.ToString("yyyyMMdd") + ".log"),
                     line + Environment.NewLine, Encoding.UTF8);
+            }
+            catch { }
+        }
+
+        // 日志保留天数：启动时清理更早的旧日志，防止长期运行无限膨胀
+        private const int LogKeepDays = 7;
+
+        // 清理 LogKeepDays 天前的旧日志文件（仅测试版编译调用；正式版零残留，不触碰 logs 目录）
+        private static void CleanupOldLogs()
+        {
+            try
+            {
+                if (!Directory.Exists(LogDir)) return;
+                DateTime threshold = DateTime.Now.AddDays(-LogKeepDays);
+                foreach (string f in Directory.GetFiles(LogDir, "auto_login_*.log"))
+                {
+                    try { if (File.GetLastWriteTime(f) < threshold) File.Delete(f); } catch { }
+                }
             }
             catch { }
         }
