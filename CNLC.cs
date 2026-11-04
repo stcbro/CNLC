@@ -49,7 +49,7 @@ namespace CNLC
             "程序启动后常驻系统托盘：一键完成Portal认证；支持断网后每30秒自动检测并重新认证；" +
             "支持记住密码、开机自登录——开机即联网，全程无感；点击“雨课堂网页版”按钮，一键直达学校雨课堂门户，无需手工输入网址。\n\n" +
             "整个程序为单个exe文件，绿色免安装，在本地配置好账号密码后，拷贝程序所在文件夹到U盘即可在任意实验室/办公室电脑使用。";
-        // 通知总开关：false = 关闭所有弹动提示（浮条/托盘气泡），完全静默，仅写日志
+        // 通知总开关：false = 关闭托盘气泡提示，完全静默，仅写日志（登录结果浮条不受此开关控制）
         private static readonly bool ShowNotify = false;
 
         private static readonly string BaseDir = AppDomain.CurrentDomain.BaseDirectory;
