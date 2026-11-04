@@ -192,9 +192,34 @@ namespace CNLC
                 Log("未处理异常(进程将退出): " + e.ExceptionObject);
             };
 
-            bool autoStart = false;
+            bool autoStart = false, updatedLaunch = false;
             foreach (string a in args)
+            {
                 if (string.Equals(a, "-AutoStart", StringComparison.OrdinalIgnoreCase)) autoStart = true;
+                else if (string.Equals(a, "-Updated", StringComparison.OrdinalIgnoreCase)) updatedLaunch = true;
+            }
+
+            // 自动更新换身自清理：删除上一轮更新留下的旧版 exe。
+            // 旧实例退出前仍持有改名后的文件，删除会失败——放后台线程重试（最多约 5 秒）
+            System.Threading.Thread updClean = new System.Threading.Thread(delegate()
+            {
+                for (int i = 0; i < 10; i++)
+                {
+                    bool clean = true;
+                    try
+                    {
+                        foreach (string f in Directory.GetFiles(BaseDir, "CNLC_old*.exe"))
+                        {
+                            try { File.Delete(f); } catch { clean = false; }
+                        }
+                    }
+                    catch { clean = false; }
+                    if (clean) break;
+                    System.Threading.Thread.Sleep(500);
+                }
+            });
+            updClean.IsBackground = true;
+            updClean.Start();
 
             bool createdNew;
             try
@@ -206,6 +231,22 @@ namespace CNLC
                 // 上个实例被强制结束导致互斥体遗留（无持有者），本进程安全接管，视为正常启动
                 createdNew = true;
                 try { mutex = new Mutex(false, "CNLC.SingleInstance", out createdNew); } catch { }
+            }
+            if (!createdNew && updatedLaunch)
+            {
+                // 自动更新重启：旧实例正在退出，等待其释放单实例锁（最多 8 秒），
+                // 避免新版被误判"程序已在运行"而退出（更新链路的关键交接）
+                bool acquired = false;
+                try
+                {
+                    for (int i = 0; i < 32; i++)
+                    {
+                        if (mutex.WaitOne(250, false)) { acquired = true; break; }
+                    }
+                }
+                catch (AbandonedMutexException) { acquired = true; }   // 旧进程退出弃锁，安全接管
+                catch { }
+                createdNew = acquired;
             }
             if (!createdNew)
             {
@@ -227,12 +268,12 @@ namespace CNLC
             // WinForms Timer 在后台线程启动（Tick 永不触发），表现为登录后托盘消失、守护失效
             _uiCtx = System.Threading.SynchronizationContext.Current;
 
-            if (autoStart && savedUser.Length > 0 && savedPass.Length > 0 && savedAutoLogin)
+            if (savedUser.Length > 0 && savedPass.Length > 0 && ((autoStart && savedAutoLogin) || updatedLaunch))
             {
-                // 开机自启动拉起 + 已记住密码 + 已开启开机自登录 → 静默登录，直接进托盘守护
+                // 静默登录：开机自启动（需开启自登录）或自动更新重启（有凭据即登录，凭据文件原地保留自动继承）
                 portalUser = savedUser;
                 portalPass = savedPass;
-                Log("开机自启动：静默登录 " + portalUser);
+                Log((updatedLaunch ? "更新完成：静默登录 " : "开机自启动：静默登录 ") + portalUser);
                 suppressGuard = true; chkGuard.Checked = true; suppressGuard = false;
                 GuardStart();
             }
@@ -1106,9 +1147,9 @@ namespace CNLC
 
         // ================= 检查更新 =================
 
-        // 读取仓库根目录 update.json 指针（version + url），与银盾项目同机制：
+        // 读取仓库根目录 update.json 指针（version/url/exe/sha256），与银盾项目同机制：
         // Release 创建只是归档，用户不可见；修改 update.json 并推送才代表"推送给用户"。
-        // 返回 [版本号, 下载地址]；null 表示网络失败；版本号为空表示指针缺失（视为已是最新）
+        // 返回 [版本号, 下载页, 安装包直链, SHA256]；null 表示网络失败；版本号为空表示指针缺失
         private static string[] GetUpdatePointer()
         {
             try
@@ -1124,17 +1165,17 @@ namespace CNLC
                     using (StreamReader sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
                     {
                         string s = sr.ReadToEnd();
-                        Match mv = Regex.Match(s, "\"version\"\\s*:\\s*\"([^\"]*)\"");
-                        Match mu = Regex.Match(s, "\"url\"\\s*:\\s*\"([^\"]*)\"");
                         return new string[] {
-                            mv.Success ? mv.Groups[1].Value : "",
-                            mu.Success ? mu.Groups[1].Value : "" };
+                            Regex.Match(s, "\"version\"\\s*:\\s*\"([^\"]*)\"").Groups[1].Value,
+                            Regex.Match(s, "\"url\"\\s*:\\s*\"([^\"]*)\"").Groups[1].Value,
+                            Regex.Match(s, "\"exe\"\\s*:\\s*\"([^\"]*)\"").Groups[1].Value,
+                            Regex.Match(s, "\"sha256\"\\s*:\\s*\"([^\"]*)\"").Groups[1].Value };
                     }
                 }
                 catch (WebException we)
                 {
                     HttpWebResponse err = we.Response as HttpWebResponse;
-                    if (err != null && err.StatusCode == HttpStatusCode.NotFound) return new string[] { "", "" };   // 指针文件不存在
+                    if (err != null && err.StatusCode == HttpStatusCode.NotFound) return new string[] { "", "", "", "" };   // 指针文件不存在
                     return null;
                 }
             }
@@ -1151,6 +1192,8 @@ namespace CNLC
                 string[] up = GetUpdatePointer();
                 string ver = up == null ? null : up[0];
                 string dl = (up != null && up[1].Length > 0) ? up[1] : ReleaseUrl;
+                string pkg = (up == null || up.Length < 3) ? "" : up[2];
+                string sha = (up == null || up.Length < 4) ? "" : up[3];
                 owner.BeginInvoke(new MethodInvoker(delegate()
                 {
                     Version rv = null;
@@ -1163,10 +1206,24 @@ namespace CNLC
                     }
                     if (ok && rv > new Version(AppVersion))
                     {
-                        if (MsgOn(owner, "发现新版本 v" + rv + "（当前 v" + AppVersion + "）。\n\n是否打开下载页面？",
-                                "检查更新", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                        if (pkg.Length > 0)
                         {
-                            try { System.Diagnostics.Process.Start(dl); } catch { }
+                            // 指针提供了安装包直链：一键自动更新
+                            if (MsgOn(owner, "发现新版本 v" + rv + "（当前 v" + AppVersion + "）。\n\n是否自动更新？约需几秒，账号密码保留，完成后自动登录。",
+                                    "检查更新", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                            {
+                                string exeUrl = pkg, shaSum = sha, nv = rv.ToString();
+                                RunBg(delegate { PerformAutoUpdate(exeUrl, shaSum, nv); });
+                            }
+                        }
+                        else
+                        {
+                            // 指针未提供安装包直链：退回打开下载页
+                            if (MsgOn(owner, "发现新版本 v" + rv + "（当前 v" + AppVersion + "）。\n\n是否打开下载页面？",
+                                    "检查更新", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                            {
+                                try { System.Diagnostics.Process.Start(dl); } catch { }
+                            }
                         }
                     }
                     else
@@ -1177,6 +1234,132 @@ namespace CNLC
             });
             t.IsBackground = true;
             t.Start();
+        }
+
+        // ================= 自动更新 =================
+
+        // 一键自动更新：下载→校验→换身→静默重启。任一步失败均回滚，不影响当前运行。
+        private static void PerformAutoUpdate(string exeUrl, string sha256, string newVer)
+        {
+            string exePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            string tmp = Path.Combine(BaseDir, "CNLC.update.tmp");
+            Form owner = (aboutForm != null && !aboutForm.IsDisposed) ? aboutForm : loginForm;
+
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+            Ui(delegate { Balloon("正在下载更新 v" + newVer + " ...", false); });
+
+            if (!DownloadFile(exeUrl, tmp))
+            {
+                UpdateFail(owner, "下载更新包失败（网络原因或链接失效）", tmp);
+                return;
+            }
+
+            // 完整性校验：PE 文件头 + SHA256（指针提供才校验），防止下载损坏或被篡改
+            try
+            {
+                using (FileStream fs = File.OpenRead(tmp))
+                {
+                    if (fs.Length < 2 || fs.ReadByte() != 'M' || fs.ReadByte() != 'Z')
+                        throw new Exception("不是有效的 exe 文件");
+                }
+                if (sha256 != null && sha256.Length > 0 &&
+                    !string.Equals(Sha256OfFile(tmp), sha256.Trim(), StringComparison.OrdinalIgnoreCase))
+                    throw new Exception("SHA256 校验不符");
+            }
+            catch (Exception ex)
+            {
+                UpdateFail(owner, "更新包校验失败：" + ex.Message, tmp);
+                return;
+            }
+
+            // 换身：运行中的 exe 只能重命名不能删除——先把自己挪开，再让新版顶上。
+            // 两步之间出错则把旧版挪回原位（回滚），保证不出现"新旧都没有"的中间态
+            string oldPath = Path.Combine(BaseDir, "CNLC_old.exe");
+            try
+            {
+                try { if (File.Exists(oldPath)) File.Delete(oldPath); }
+                catch { oldPath = Path.Combine(BaseDir, "CNLC_old_" + DateTime.Now.ToString("HHmmss") + ".exe"); }
+                File.Move(exePath, oldPath);
+                File.Move(tmp, exePath);
+            }
+            catch (Exception ex)
+            {
+                try { if (!File.Exists(exePath) && File.Exists(oldPath)) File.Move(oldPath, exePath); } catch { }
+                try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+                UpdateFail(owner, "替换程序文件失败：" + ex.Message, null);
+                return;
+            }
+
+            Ui(delegate { Balloon("更新完成，正在重启 ...", false); });
+
+            // 重启：在 UI 线程（互斥锁持有线程）隐藏托盘、交还锁并拉起新版，然后退出。
+            // 新版带 -Updated 参数：等待旧实例锁交接（最多 8 秒）→ 凭据继承 → 静默登录进托盘
+            try
+            {
+                loginForm.Invoke((MethodInvoker)delegate
+                {
+                    try { if (tray != null) tray.Visible = false; } catch { }
+                    try { mutex.ReleaseMutex(); } catch { }
+                    System.Diagnostics.Process.Start(exePath, "-AutoStart -Updated");
+                });
+            }
+            catch
+            {
+                // 主界面句柄未创建（如静默登录场景）：直接拉起，新实例会等待旧锁交接
+                try { System.Diagnostics.Process.Start(exePath, "-AutoStart -Updated"); } catch { }
+            }
+            System.Threading.Thread.Sleep(300);
+            Environment.Exit(0);
+        }
+
+        // 自动更新失败统一出口：清理临时文件，弹窗说明（当前程序不受影响），可转手动下载
+        private static void UpdateFail(Form owner, string reason, string tmp)
+        {
+            try { if (tmp != null && File.Exists(tmp)) File.Delete(tmp); } catch { }
+            Ui(delegate
+            {
+                Balloon("自动更新失败，程序照常运行", true);
+                if (MsgOn(owner, "自动更新失败：" + reason + "\n\n当前程序不受影响，是否打开下载页手动更新？",
+                        "检查更新", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                {
+                    try { System.Diagnostics.Process.Start(ReleaseUrl); } catch { }
+                }
+            });
+        }
+
+        // 下载文件到指定路径（跟随重定向，适配 Gitee 附件直链）；成功且非空返回 true
+        private static bool DownloadFile(string url, string dest)
+        {
+            try
+            {
+                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
+                req.Method = "GET";
+                req.Timeout = 20000;
+                req.ReadWriteTimeout = 20000;
+                req.UserAgent = "Mozilla/5.0";
+                using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
+                using (Stream rs = resp.GetResponseStream())
+                using (FileStream fs = new FileStream(dest, FileMode.Create, FileAccess.Write))
+                {
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = rs.Read(buf, 0, buf.Length)) > 0) fs.Write(buf, 0, n);
+                }
+                return File.Exists(dest) && new FileInfo(dest).Length > 0;
+            }
+            catch { return false; }
+        }
+
+        // 计算文件 SHA256（十六进制小写）
+        private static string Sha256OfFile(string path)
+        {
+            using (System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256.Create())
+            using (FileStream fs = File.OpenRead(path))
+            {
+                StringBuilder sb = new StringBuilder();
+                foreach (byte b in sha.ComputeHash(fs)) sb.Append(b.ToString("x2"));
+                return sb.ToString();
+            }
         }
 
         // ================= 认证核心 =================
