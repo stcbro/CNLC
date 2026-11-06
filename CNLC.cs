@@ -109,10 +109,6 @@ namespace CNLC
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool SetProcessDPIAware();
 
-        // 查询物理按键全局按下状态（用于状态窗"屏幕任意点击/按键即关闭"）
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern short GetAsyncKeyState(int vKey);
-
         // ---------- 后台线程 / UI 调度 ----------
         // 网络请求（认证/探测/注销，最坏 10~20 秒超时）必须放后台线程，
         // 否则外网等不可达环境下 UI 线程被阻塞，表现为"程序卡死"（已实测）
@@ -1051,26 +1047,37 @@ namespace CNLC
                 });
             });
 
-            // 屏幕上任意位置点击鼠标或按任意键即自动关闭：
-            // 用 GetAsyncKeyState 轮询物理按键状态（全局生效，不限本窗口内）
-            System.Windows.Forms.Timer closeTimer = new System.Windows.Forms.Timer();
-            closeTimer.Interval = 100;
-            closeTimer.Tick += delegate
+            // 关闭方式：窗口内任意点击/任意键 + 失焦即关（与"关于"窗同一套成熟写法）。
+            // 关键修复：原实现每 100ms 用 GetAsyncKeyState 全局轮询物理按键，双屏/触控/外接
+            // 设备常有键被驱动持续报告"按下"，弹窗后首次轮询就误判并 Close，表现为状态窗
+            // "一闪就消失"。改为窗口内事件后不再依赖任何物理按键状态，双屏与单屏表现一致。
+            statusForm.KeyPreview = true;
+            // 统一关闭出口：防重入（Close 会再次触发 Deactivate）+ 空引用防护
+            bool closing = false;
+            DateTime shownAt = DateTime.MinValue;
+            MethodInvoker closeStatus = delegate
             {
-                if (statusForm == null || statusForm.IsDisposed) { closeTimer.Stop(); return; }
-                bool pressed = (GetAsyncKeyState(0x01) & 0x8000) != 0    // 鼠标左键
-                            || (GetAsyncKeyState(0x02) & 0x8000) != 0    // 鼠标右键
-                            || (GetAsyncKeyState(0x04) & 0x8000) != 0;   // 鼠标中键
-                if (!pressed)
-                {
-                    for (int vk = 0x08; vk <= 0xFE; vk++)   // Backspace 起的全部键盘键
-                    {
-                        if ((GetAsyncKeyState(vk) & 0x8000) != 0) { pressed = true; break; }
-                    }
-                }
-                if (pressed) statusForm.Close();
+                if (closing) return;
+                Form f = statusForm;
+                if (f == null || f.IsDisposed) return;
+                closing = true;
+                f.Close();
             };
-            closeTimer.Start();
+            statusForm.KeyDown += delegate(object s, KeyEventArgs e) { closeStatus(); };
+            statusForm.MouseClick += delegate(object s, MouseEventArgs e) { closeStatus(); };
+            foreach (Control c in statusForm.Controls)
+                c.MouseClick += delegate(object s, MouseEventArgs e) { closeStatus(); };
+            // 点击窗口外（桌面/其他程序）失焦即关；Shown 后再挂，且忽略显示后 300ms
+            // 内的系统焦点抖动，避免刚弹出就被自己关掉
+            statusForm.Shown += delegate
+            {
+                shownAt = DateTime.Now;
+                statusForm.Deactivate += delegate(object s, EventArgs e)
+                {
+                    if ((DateTime.Now - shownAt).TotalMilliseconds < 300) return;
+                    closeStatus();
+                };
+            };
 
             // 无边框窗体手动画一圈细边框，避免和白背景融在一起
             statusForm.Paint += delegate(object s, PaintEventArgs e)
@@ -1083,8 +1090,6 @@ namespace CNLC
             // 若不清理引用，下次左键会被单实例守卫误判为"已打开"而只 Activate（无反应）
             statusForm.FormClosed += delegate
             {
-                closeTimer.Stop();
-                try { closeTimer.Dispose(); } catch { }
                 try { statusForm.Dispose(); } catch { }
                 statusForm = null;
             };
