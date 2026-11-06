@@ -88,10 +88,12 @@ namespace CNLC
         private static NotifyIcon tray;
         private static ToolStripMenuItem miGuard;
         private static ToolStripMenuItem miRestartEnable;
-        private static ToolStripMenuItem miRestartState;
-        private static ToolStripMenuItem miRestartTime;   // "重启时间" 子菜单标题，常驻显示当前设定时间
+        private static ToolStripLabel miRestartState;        // 状态行：普通黑字、不可点（禁用菜单项会被系统染灰）
         private static ToolStripMenuItem[] miRestartPresets;
         private static ToolStripTextBox tbRestartTime;
+        private static ToolStripMenuItem miRestartCancel;    // 只在重启倒计时期间出现
+        private static ToolStripSeparator miRestartCancelSep;
+        private static bool restartPending = false;          // 是否正处于重启倒计时
         private static bool restartTaskOn = false;
         private static string restartTime = "00:00";
         private static System.Windows.Forms.Timer timer;
@@ -1853,16 +1855,17 @@ namespace CNLC
             catch { }
         }
 
+        // 二级菜单：主菜单 →「定时重启电脑」一层子菜单，开关 / 状态 / 预设 / 自定义 / 取消全部平铺
         private static ToolStripMenuItem BuildRestartMenu()
         {
             ToolStripMenuItem root = new ToolStripMenuItem("定时重启电脑");
             miRestartEnable = new ToolStripMenuItem("启用每日定时重启");
             miRestartEnable.Click += delegate { SetRestartEnabled(!miRestartEnable.Checked); };
-            miRestartState = new ToolStripMenuItem("当前设置：读取中 ...");
-            miRestartState.Enabled = false;
 
-            ToolStripMenuItem miTime = new ToolStripMenuItem("重启时间");
-            miRestartTime = miTime;
+            // 状态行用 ToolStripLabel：不可点击，但文字保持正常黑色（禁用菜单项会被系统染灰）
+            miRestartState = new ToolStripLabel();
+            miRestartState.Padding = new Padding(26, 0, 0, 0);
+
             string[] presets = new string[] { "00:00", "01:00", "02:00", "23:00" };
             miRestartPresets = new ToolStripMenuItem[presets.Length];
             for (int i = 0; i < presets.Length; i++)
@@ -1870,28 +1873,35 @@ namespace CNLC
                 string t = presets[i];
                 miRestartPresets[i] = new ToolStripMenuItem(t);
                 miRestartPresets[i].Click += delegate { SetRestartTime(t); };
-                miTime.DropDownItems.Add(miRestartPresets[i]);
             }
-            miTime.DropDownItems.Add(new ToolStripSeparator());
+
             tbRestartTime = new ToolStripTextBox();
             tbRestartTime.Text = "00:00";
             tbRestartTime.ToolTipText = "24 小时制，例如 00:00 / 06:30";
-            miTime.DropDownItems.Add(tbRestartTime);
             ToolStripMenuItem miApply = new ToolStripMenuItem("应用自定义时间");
             miApply.Click += delegate { SetRestartTime(tbRestartTime.Text.Trim()); };
-            miTime.DropDownItems.Add(miApply);
 
-            ToolStripMenuItem miCancel = new ToolStripMenuItem("取消本次重启（倒计时内）");
-            miCancel.Click += delegate { CancelPendingRestart(); };
+            miRestartCancel = new ToolStripMenuItem("取消本次重启");
+            miRestartCancel.Click += delegate { CancelPendingRestart(); };
+            miRestartCancelSep = new ToolStripSeparator();
+
+            ToolStripLabel lbGroup = new ToolStripLabel("重启时间");
+            lbGroup.ForeColor = Color.Gray;
+            lbGroup.Padding = new Padding(26, 0, 0, 0);
 
             root.DropDownItems.Add(miRestartEnable);
             root.DropDownItems.Add(miRestartState);
             root.DropDownItems.Add(new ToolStripSeparator());
-            root.DropDownItems.Add(miTime);
-            root.DropDownItems.Add(miCancel);
+            root.DropDownItems.Add(lbGroup);
+            foreach (ToolStripMenuItem it in miRestartPresets) root.DropDownItems.Add(it);
+            root.DropDownItems.Add(new ToolStripSeparator());
+            root.DropDownItems.Add(tbRestartTime);
+            root.DropDownItems.Add(miApply);
+            root.DropDownItems.Add(miRestartCancelSep);
+            root.DropDownItems.Add(miRestartCancel);
             root.DropDownOpening += delegate
             {
-                // 启用态与时间都来自注册表，本地瞬时读取，无需后台线程
+                // 启用态、设定时间、倒计时状态都来自本地，瞬时读取，无需后台线程
                 ApplyRestartMenuState(ReadRestartEnabled(), ReadRestartTime());
             };
             ApplyRestartMenuState(ReadRestartEnabled(), ReadRestartTime());
@@ -1904,15 +1914,25 @@ namespace CNLC
             restartTaskOn = on;
             restartTime = IsValidTime(hhmm) ? hhmm : "00:00";
             miRestartEnable.Checked = on;
-            miRestartState.Text = on
-                ? "当前：每日 " + restartTime + "，还有 " + RemainingText(restartTime) + " 重启"
-                : "当前：未启用（默认每日 00:00）";
+            // 当天已触发或已取消时，别再显示「还有 X 小时」——实际要等明天
+            if (!on) miRestartState.Text = "未启用 · 默认每日 00:00";
+            else if (string.Equals(ReadRestartLastDate(), TodayStr()))
+                miRestartState.Text = "今日已跳过 · 下次明天 " + restartTime;
+            else
+                miRestartState.Text = "已启用 · 每日 " + restartTime + " · 距重启 " + RemainingText(restartTime);
             if (miRestartPresets != null)
                 foreach (ToolStripMenuItem it in miRestartPresets)
                     if (it != null) it.Checked = on && it.Text == restartTime;
             if (tbRestartTime != null) tbRestartTime.Text = restartTime;
-            if (miRestartTime != null)
-                miRestartTime.Text = on ? "重启时间：" + restartTime : "重启时间（未启用）";
+            SetRestartPending(restartPending);   // 菜单每次展开时同步「取消重启」的显示状态
+        }
+
+        // 倒计时状态统一入口：取消项与它上面的分隔线一起显示/隐藏，避免留下一条空横线
+        private static void SetRestartPending(bool v)
+        {
+            restartPending = v;
+            if (miRestartCancel != null) miRestartCancel.Visible = v;
+            if (miRestartCancelSep != null) miRestartCancelSep.Visible = v;
         }
 
         // 距下次重启还有多久；今天已过点就算到明天（托盘菜单每次展开时刷新）
@@ -1958,6 +1978,45 @@ namespace CNLC
             catch { }
         }
 
+        // 到点提示：常驻到重启为止，带「取消重启」按钮，点一下直接撤销倒计时（不用再去托盘菜单）
+        private static void ShowRestartToast()
+        {
+            try
+            {
+                Form f = new Form();
+                f.FormBorderStyle = FormBorderStyle.None;
+                f.StartPosition = FormStartPosition.CenterScreen;
+                f.TopMost = true;
+                f.BackColor = Color.FromArgb(255, 242, 242);
+                f.AutoScaleMode = AutoScaleMode.None;
+                try { f.Font = UiFont(); } catch { }
+                f.ClientSize = new Size(X(360), X(120));
+                Label lb = new Label();
+                lb.Text = "到点了，还有 " + (RestartCountdownSec / 60) + " 分钟重启电脑";
+                lb.TextAlign = ContentAlignment.MiddleCenter;
+                lb.Dock = DockStyle.Top;
+                lb.Height = X(66);
+                f.Controls.Add(lb);
+                Button btn = new Button();
+                btn.Text = "取消重启";
+                try { btn.Font = UiFont(); } catch { }
+                btn.Size = new Size(X(140), X(34));
+                btn.Location = new Point((f.ClientSize.Width - btn.Width) / 2, X(72));
+                btn.Click += delegate { try { f.Close(); } catch { } CancelPendingRestart(); };
+                f.Controls.Add(btn);
+                f.Show();   // 不自动关闭：倒计时结束系统重启，浮窗随进程消失
+            }
+            catch { }
+        }
+
+        // 设置类浮窗统一文案；当天已跳过时不能再说「还有 X 小时」，否则又变成显示骗人
+        private static string RestartToastText(string prefix, string hhmm)
+        {
+            if (string.Equals(ReadRestartLastDate(), TodayStr()))
+                return prefix + " · 每日 " + hhmm + " 重启 · 今日已跳过，明天生效";
+            return prefix + " · 每日 " + hhmm + " 重启 · 还有 " + RemainingText(hhmm);
+        }
+
         // 启用/关闭只写注册表（纯本地、瞬时、不碰任何外部进程），菜单点击在 UI 线程同步完成即可。
         // 反馈走置顶浮窗（ShowToast）：主界面是隐藏的托盘程序，MessageBox 挂隐藏窗口会被压底不弹出。
         private static void SetRestartEnabled(bool on)
@@ -1966,8 +2025,7 @@ namespace CNLC
             ApplyRestartMenuState(on, ReadRestartTime());
             Log("定时重启" + (on ? "已启用：每日 " : "已关闭：") + ReadRestartTime());
             ShowToast(on
-                ? "已启用：每日 " + ReadRestartTime() + " 重启电脑，还有 " +
-                  RemainingText(ReadRestartTime()) + "。重启前 " + RestartCountdownSec + " 秒可取消。"
+                ? RestartToastText("已启用", ReadRestartTime())
                 : "已关闭每日定时重启。", false);
         }
 
@@ -1978,22 +2036,23 @@ namespace CNLC
                 ShowToast("时间格式不对，请用 24 小时制 HH:MM，例如 00:00、06:30。", true);
                 return;
             }
+            WriteRestartEnabled(true);   // 设时间即启用：菜单与浮窗说「已启用」，注册表必须同步
             WriteRestartTime(hhmm);
             ApplyRestartMenuState(true, hhmm);
             Log("定时重启时间设为 " + hhmm + "（已启用）");
-            ShowToast("已设置：每日 " + hhmm + " 重启电脑，还有 " + RemainingText(hhmm) +
-                "。重启前 " + RestartCountdownSec + " 秒可取消。", false);
+            ShowToast(RestartToastText("已设置", hhmm), false);
         }
 
-        // 取消本次重启倒计时：shutdown /a 撤销；并把"最近触发日期"写为今天，
-        // 这样当天不会再被计时器重新触发（用户主动取消=当天跳过）。
+        // 取消倒计时：只撤销 shutdown，不改「最近触发日期」。
+        // 真正触发时 TriggerRestart 已写过当天（防重复触发）；这里若也写，非倒计时期间误点就会白关掉一整天。
+        // 取消项只在倒计时期间可见，平时点不到，也不会再触发系统「没有进行中的关机」提示。
         private static void CancelPendingRestart()
         {
             try
             {
                 System.Diagnostics.Process.Start("shutdown.exe", "/a");
-                WriteRestartLastDate(TodayStr());
-                ShowToast("已取消本次重启。若当前没有待执行的重启倒计时，系统会提示“没有进行中的关机”，属正常。", false);
+                SetRestartPending(false);
+                ShowToast("已取消本次重启。", false);
             }
             catch (Exception ex) { ShowToast("取消失败：" + ex.Message, true); }
         }
@@ -2022,7 +2081,8 @@ namespace CNLC
         {
             WriteRestartLastDate(TodayStr());   // 先记今天已触发，避免重启前被重复触发/重启循环
             Log("定时重启：已到设定时间，发出 " + RestartCountdownSec + " 秒倒计时重启命令");
-            ShowToast("到点了，还有 1 分钟重启电脑（托盘菜单“取消本次重启”可撤回）。", true);
+            SetRestartPending(true);
+            ShowRestartToast();   // 常驻到重启，浮窗上直接点「取消重启」一步撤销
             try
             {
                 // 不加 /f：未保存文档会正常弹保存提示；倒计时内可用 shutdown /a 或托盘菜单取消
