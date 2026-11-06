@@ -5,7 +5,7 @@
 //  针对高校校园网（华为 AC Portal 1.1.1.3 认证）环境定制
 //  功能：登录窗口 / 托盘守护 / 断网自动重连 / 记住密码(跨电脑) /
 //        开机自登录(自启动+静默) / 雨课堂网页版快捷入口 / 注销 / 状态窗口 /
-//        定时重启电脑（计划任务 + 空闲保护 + 60 秒可取消，默认每日 00:00）
+//        定时重启电脑（程序常驻自计时 + 空闲保护 + 60 秒可取消，默认每日 00:00）
 //  说明：不生成日志与状态文件，保持程序目录干净（状态显示与定时重启设置存注册表）
 //  版本：1.5.0
 //  作者：Bro.Cui
@@ -90,6 +90,7 @@ namespace CNLC
         private static ToolStripMenuItem miGuard;
         private static ToolStripMenuItem miRestartEnable;
         private static ToolStripMenuItem miRestartState;
+        private static ToolStripMenuItem miRestartTime;   // "重启时间" 子菜单标题，常驻显示当前设定时间
         private static ToolStripMenuItem[] miRestartPresets;
         private static ToolStripTextBox tbRestartTime;
         private static bool restartTaskOn = false;
@@ -1868,6 +1869,7 @@ namespace CNLC
             miRestartState.Enabled = false;
 
             ToolStripMenuItem miTime = new ToolStripMenuItem("重启时间");
+            miRestartTime = miTime;
             string[] presets = new string[] { "00:00", "01:00", "02:00", "23:00" };
             miRestartPresets = new ToolStripMenuItem[presets.Length];
             for (int i = 0; i < presets.Length; i++)
@@ -1916,6 +1918,8 @@ namespace CNLC
                 foreach (ToolStripMenuItem it in miRestartPresets)
                     if (it != null) it.Checked = on && it.Text == restartTime;
             if (tbRestartTime != null) tbRestartTime.Text = restartTime;
+            if (miRestartTime != null)
+                miRestartTime.Text = on ? "重启时间：" + restartTime : "重启时间（未启用）";
         }
 
         // 轻量提示浮窗：置顶、非模态（不阻塞 UI）、自动关闭，必定可见；
