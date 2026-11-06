@@ -1876,20 +1876,23 @@ namespace CNLC
             ToolStripLabel lbGroup = new ToolStripLabel("重启时间");
             lbGroup.ForeColor = Color.Gray;
             lbGroup.Padding = new Padding(26, 0, 0, 0);
-            // 「重启时间」与「自定义」、输入框同组同字号，放大加粗
+            miRestartCancel = new ToolStripMenuItem("取消本次重启");
+            miRestartCancel.Click += delegate { CancelPendingRestart(); };
+            miRestartCancelSep = new ToolStripSeparator();
+
+            // 整个子菜单共用一套放大加粗字体，所有项字号完全一致
             try
             {
                 Font ui = UiFont();
                 Font big = new Font(ui.FontFamily, ui.Size * 1.15F, FontStyle.Bold);
+                miRestartEnable.Font = big;
+                miRestartState.Font = big;
                 lbGroup.Font = big;
                 tbRestartTime.Font = big;
                 miApply.Font = big;
+                miRestartCancel.Font = big;
             }
             catch { }
-
-            miRestartCancel = new ToolStripMenuItem("取消本次重启");
-            miRestartCancel.Click += delegate { CancelPendingRestart(); };
-            miRestartCancelSep = new ToolStripSeparator();
 
             root.DropDownItems.Add(miRestartEnable);
             root.DropDownItems.Add(miRestartState);
@@ -1915,11 +1918,12 @@ namespace CNLC
             restartTime = IsValidTime(hhmm) ? hhmm : "00:00";
             miRestartEnable.Checked = on;
             // 当天已触发或已取消时，别再显示「还有 X 小时」——实际要等明天
-            if (!on) miRestartState.Text = "未启用 · 默认每日 00:00";
+            // 状态行只说还剩多久；当前设定时间看下面的输入框即可
+            if (!on) miRestartState.Text = "未启用";
             else if (string.Equals(ReadRestartLastDate(), TodayStr()))
                 miRestartState.Text = "今日已跳过 · 下次明天 " + restartTime;
             else
-                miRestartState.Text = "已启用 · 每日 " + restartTime + " · 距重启 " + RemainingText(restartTime);
+                miRestartState.Text = "距重启 " + RemainingText(restartTime);
             if (tbRestartTime != null) tbRestartTime.Text = restartTime;
             SetRestartPending(restartPending);   // 菜单每次展开时同步「取消重启」的显示状态
         }
