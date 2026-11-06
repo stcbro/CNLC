@@ -7,7 +7,7 @@
 //        开机自登录(自启动+静默) / 雨课堂网页版快捷入口 / 注销 / 状态窗口 /
 //        定时重启电脑（计划任务 + 空闲保护 + 60 秒可取消，默认每日 00:00）
 //  说明：不生成日志与状态文件，保持程序目录干净（状态显示与定时重启设置存注册表）
-//  版本：1.4.0
+//  版本：1.5.0
 //  作者：Bro.Cui
 //  编译：由 Build-Exe.ps1 调用 Windows 自带的 csc.exe 完成
 // ==================================================================
@@ -27,7 +27,7 @@ namespace CNLC
     internal static class App
     {
         // ---------- 配置常量 ----------
-        internal const string AppVersion = "1.4.0";   // 版本号（仅代码内部使用，不显示在界面）
+        internal const string AppVersion = "1.5.0";   // 版本号（仅代码内部使用，不显示在界面）
         internal const string AppAuthor = "Bro.Cui";  // 作者
         private const string PortalHost = "http://1.1.1.3";
         private const string PortalLoginPage = PortalHost + "/ac_portal/20240318141412/pc.html";
