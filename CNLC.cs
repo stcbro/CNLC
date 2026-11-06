@@ -89,7 +89,6 @@ namespace CNLC
         private static ToolStripMenuItem miGuard;
         private static ToolStripMenuItem miRestartEnable;
         private static ToolStripLabel miRestartState;        // 状态行：普通黑字、不可点（禁用菜单项会被系统染灰）
-        private static ToolStripMenuItem[] miRestartPresets;
         private static ToolStripTextBox tbRestartTime;
         private static ToolStripMenuItem miRestartCancel;    // 只在重启倒计时期间出现
         private static ToolStripSeparator miRestartCancelSep;
@@ -1855,7 +1854,7 @@ namespace CNLC
             catch { }
         }
 
-        // 二级菜单：主菜单 →「定时重启电脑」一层子菜单，开关 / 状态 / 预设 / 自定义 / 取消全部平铺
+        // 二级菜单：主菜单 →「定时重启电脑」一层子菜单，开关 / 状态 / 时间输入框 / 自定义 / 取消全部平铺
         private static ToolStripMenuItem BuildRestartMenu()
         {
             ToolStripMenuItem root = new ToolStripMenuItem("定时重启电脑");
@@ -1866,26 +1865,23 @@ namespace CNLC
             miRestartState = new ToolStripLabel();
             miRestartState.Padding = new Padding(26, 0, 0, 0);
 
-            string[] presets = new string[] { "00:00", "01:00", "02:00", "23:00" };
-            miRestartPresets = new ToolStripMenuItem[presets.Length];
-            for (int i = 0; i < presets.Length; i++)
-            {
-                string t = presets[i];
-                miRestartPresets[i] = new ToolStripMenuItem(t);
-                miRestartPresets[i].Click += delegate { SetRestartTime(t); };
-            }
-
+            // 不要预设，直接输时间 → 点「自定义」应用
             tbRestartTime = new ToolStripTextBox();
             tbRestartTime.Text = "00:00";
             tbRestartTime.ToolTipText = "24 小时制，例如 00:00 / 06:30";
-            tbRestartTime.Margin = new Padding(26, 3, 3, 3);   // 框内时间与上面预设时间左对齐
+            tbRestartTime.Margin = new Padding(26, 3, 3, 3);   // 框内时间与分组标题、「自定义」左对齐
             ToolStripMenuItem miApply = new ToolStripMenuItem("自定义");
             miApply.Click += delegate { SetRestartTime(tbRestartTime.Text.Trim()); };
-            // 自定义标签与输入框同组放大加粗，一眼能看到、能对准
+
+            ToolStripLabel lbGroup = new ToolStripLabel("重启时间");
+            lbGroup.ForeColor = Color.Gray;
+            lbGroup.Padding = new Padding(26, 0, 0, 0);
+            // 「重启时间」与「自定义」、输入框同组同字号，放大加粗
             try
             {
                 Font ui = UiFont();
                 Font big = new Font(ui.FontFamily, ui.Size * 1.15F, FontStyle.Bold);
+                lbGroup.Font = big;
                 tbRestartTime.Font = big;
                 miApply.Font = big;
             }
@@ -1895,16 +1891,10 @@ namespace CNLC
             miRestartCancel.Click += delegate { CancelPendingRestart(); };
             miRestartCancelSep = new ToolStripSeparator();
 
-            ToolStripLabel lbGroup = new ToolStripLabel("重启时间");
-            lbGroup.ForeColor = Color.Gray;
-            lbGroup.Padding = new Padding(26, 0, 0, 0);
-
             root.DropDownItems.Add(miRestartEnable);
             root.DropDownItems.Add(miRestartState);
             root.DropDownItems.Add(new ToolStripSeparator());
             root.DropDownItems.Add(lbGroup);
-            foreach (ToolStripMenuItem it in miRestartPresets) root.DropDownItems.Add(it);
-            root.DropDownItems.Add(new ToolStripSeparator());
             root.DropDownItems.Add(tbRestartTime);
             root.DropDownItems.Add(miApply);
             root.DropDownItems.Add(miRestartCancelSep);
@@ -1930,9 +1920,6 @@ namespace CNLC
                 miRestartState.Text = "今日已跳过 · 下次明天 " + restartTime;
             else
                 miRestartState.Text = "已启用 · 每日 " + restartTime + " · 距重启 " + RemainingText(restartTime);
-            if (miRestartPresets != null)
-                foreach (ToolStripMenuItem it in miRestartPresets)
-                    if (it != null) it.Checked = on && it.Text == restartTime;
             if (tbRestartTime != null) tbRestartTime.Text = restartTime;
             SetRestartPending(restartPending);   // 菜单每次展开时同步「取消重启」的显示状态
         }
@@ -1969,13 +1956,16 @@ namespace CNLC
                 f.BackColor = warning ? Color.FromArgb(255, 242, 242) : Color.White;
                 f.AutoScaleMode = AutoScaleMode.None;
                 try { f.Font = UiFont(); } catch { }
-                f.ClientSize = new Size(X(400), X(112));
                 Label lb = new Label();
                 lb.Text = text;
                 lb.Dock = DockStyle.Fill;
                 lb.TextAlign = ContentAlignment.MiddleCenter;
                 lb.Padding = new Padding(X(14));
                 try { lb.Font = new Font(f.Font.FontFamily, f.Font.Size * 1.3F, FontStyle.Bold); } catch { }
+                // 按实际文字宽度撑开浮窗，保证提示始终只占一行（左右各留白）
+                int textW = 0;
+                try { textW = TextRenderer.MeasureText(text, lb.Font).Width; } catch { }
+                f.ClientSize = new Size(Math.Max(X(400), textW + X(48)), X(112));
                 f.Controls.Add(lb);
                 f.Click += delegate(object s, EventArgs e) { try { f.Close(); } catch { } };
                 f.KeyPreview = true;
@@ -2001,13 +1991,16 @@ namespace CNLC
                 f.BackColor = Color.FromArgb(255, 242, 242);
                 f.AutoScaleMode = AutoScaleMode.None;
                 try { f.Font = UiFont(); } catch { }
-                f.ClientSize = new Size(X(400), X(140));
+                string msg = "到点了，还有 " + (RestartCountdownSec / 60) + " 分钟重启电脑";
                 Label lb = new Label();
-                lb.Text = "到点了，还有 " + (RestartCountdownSec / 60) + " 分钟重启电脑";
+                lb.Text = msg;
                 lb.TextAlign = ContentAlignment.MiddleCenter;
                 lb.Dock = DockStyle.Top;
                 lb.Height = X(78);
                 try { lb.Font = new Font(f.Font.FontFamily, f.Font.Size * 1.4F, FontStyle.Bold); } catch { }
+                int textW = 0;
+                try { textW = TextRenderer.MeasureText(msg, lb.Font).Width; } catch { }
+                f.ClientSize = new Size(Math.Max(X(400), textW + X(48)), X(140));
                 f.Controls.Add(lb);
                 Button btn = new Button();
                 btn.Text = "取消重启";
