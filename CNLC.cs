@@ -1908,54 +1908,58 @@ namespace CNLC
             if (tbRestartTime != null) tbRestartTime.Text = restartTime;
         }
 
+        // schtasks 同步调用可阻塞数秒，必须放后台线程，结果经 Ui 回调弹窗；
+        // 弹窗必须用 Msg（挂主界面为 owner）——无 owner 的模态框会被压底层且
+        // 卡死 UI 线程，表现为托盘左右键全部失灵（v1.5.0 曾触发此 bug）
         private static void SetRestartEnabled(bool on)
         {
-            if (on)
+            string t = ReadRestartTime();
+            RunBg(delegate
             {
-                string t = ReadRestartTime();
-                int rc = RunSchtasks(BuildRestartTaskArgs(t));
-                if (rc != 0)
+                int rc = on
+                    ? RunSchtasks(BuildRestartTaskArgs(t))
+                    : RunSchtasks("/delete /tn \"" + RestartTaskName + "\" /f");
+                Ui(delegate
                 {
-                    MsgOn(null, "创建定时重启任务失败（schtasks 返回 " + rc +
-                        "）。\n请确认当前 Windows 账户允许创建计划任务。", "定时重启");
-                    return;
-                }
-                WriteRestartTime(t);
-                Log("定时重启已启用：每日 " + t);
-            }
-            else
-            {
-                int rc = RunSchtasks("/delete /tn \"" + RestartTaskName + "\" /f");
-                if (rc != 0)
-                {
-                    MsgOn(null, "关闭定时重启任务失败（schtasks 返回 " + rc + "）。", "定时重启");
-                    return;
-                }
-                Log("定时重启已关闭");
-            }
-            ApplyRestartMenuState(on, ReadRestartTime());
+                    if (rc != 0)
+                    {
+                        Msg((on ? "创建" : "关闭") + "定时重启任务失败（schtasks 返回 " + rc +
+                            "）。\n请确认当前 Windows 账户允许创建计划任务。", "定时重启");
+                        return;
+                    }
+                    if (on) { WriteRestartTime(t); Log("定时重启已启用：每日 " + t); }
+                    else Log("定时重启已关闭");
+                    ApplyRestartMenuState(on, ReadRestartTime());
+                });
+            });
         }
 
         private static void SetRestartTime(string hhmm)
         {
             if (!IsValidTime(hhmm))
             {
-                MsgOn(null, "时间格式不对，请用 24 小时制 HH:MM，例如 00:00、06:30。", "定时重启");
+                Msg("时间格式不对，请用 24 小时制 HH:MM，例如 00:00、06:30。", "定时重启");
                 return;
             }
-            int rc = RestartTaskExists()
-                ? RunSchtasks("/change /tn \"" + RestartTaskName + "\" /st " + hhmm)
-                : RunSchtasks(BuildRestartTaskArgs(hhmm));
-            if (rc != 0)
+            RunBg(delegate
             {
-                MsgOn(null, "设置重启时间失败（schtasks 返回 " + rc + "）。", "定时重启");
-                return;
-            }
-            WriteRestartTime(hhmm);
-            ApplyRestartMenuState(true, hhmm);
-            Log("定时重启时间设为 " + hhmm + "（计划任务已启用）");
-            MsgOn(null, "已设置：每日 " + hhmm + " 重启电脑。\n\n仅在无人操作满 " + RestartIdleMinutes +
-                " 分钟时执行，重启前留 " + RestartCountdownSec + " 秒倒计时，可在菜单里取消。", "定时重启");
+                int rc = RestartTaskExists()
+                    ? RunSchtasks("/change /tn \"" + RestartTaskName + "\" /st " + hhmm)
+                    : RunSchtasks(BuildRestartTaskArgs(hhmm));
+                Ui(delegate
+                {
+                    if (rc != 0)
+                    {
+                        Msg("设置重启时间失败（schtasks 返回 " + rc + "）。", "定时重启");
+                        return;
+                    }
+                    WriteRestartTime(hhmm);
+                    ApplyRestartMenuState(true, hhmm);
+                    Log("定时重启时间设为 " + hhmm + "（计划任务已启用）");
+                    Msg("已设置：每日 " + hhmm + " 重启电脑。\n\n仅在无人操作满 " + RestartIdleMinutes +
+                        " 分钟时执行，重启前留 " + RestartCountdownSec + " 秒倒计时，可在菜单里取消。", "定时重启");
+                });
+            });
         }
 
         private static void CancelPendingRestart()
@@ -1963,10 +1967,10 @@ namespace CNLC
             try
             {
                 System.Diagnostics.Process.Start("shutdown.exe", "/a");
-                MsgOn(null, "已发出取消命令。若当前没有待执行的重启倒计时，" +
+                Msg("已发出取消命令。若当前没有待执行的重启倒计时，" +
                     "系统会提示“没有进行中的关机”，属正常现象。", "定时重启");
             }
-            catch (Exception ex) { MsgOn(null, "取消失败：" + ex.Message, "定时重启"); }
+            catch (Exception ex) { Msg("取消失败：" + ex.Message, "定时重启"); }
         }
 
         private static void RestartCheckAndExit()
