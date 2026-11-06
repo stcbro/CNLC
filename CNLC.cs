@@ -89,7 +89,8 @@ namespace CNLC
         private static ToolStripMenuItem miGuard;
         private static ToolStripMenuItem miRestartEnable;
         private static ToolStripLabel miRestartState;        // 状态行：普通黑字、不可点（禁用菜单项会被系统染灰）
-        private static ToolStripTextBox tbRestartTime;
+        private static ToolStripMenuItem miRestartApply;      // 「自定义（HH:MM）」：点它弹出独立时间输入框
+        private static Form restartInputForm;                // 防止重复弹出时间输入窗
         private static ToolStripMenuItem miRestartCancel;    // 只在重启倒计时期间出现
         private static ToolStripSeparator miRestartCancelSep;
         private static bool restartPending = false;          // 是否正处于重启倒计时
@@ -1854,7 +1855,7 @@ namespace CNLC
             catch { }
         }
 
-        // 二级菜单：主菜单 →「定时重启电脑」一层子菜单，开关 / 状态 / 时间输入框 / 自定义 / 取消全部平铺
+        // 二级菜单：主菜单 →「定时重启电脑」一层子菜单，开关 / 状态 / 自定义时间 / 取消全部平铺
         private static ToolStripMenuItem BuildRestartMenu()
         {
             ToolStripMenuItem root = new ToolStripMenuItem("定时重启电脑");
@@ -1865,17 +1866,10 @@ namespace CNLC
             miRestartState = new ToolStripLabel();
             miRestartState.Padding = new Padding(26, 0, 0, 0);
 
-            // 不要预设，直接输时间 → 点「自定义」应用
-            tbRestartTime = new ToolStripTextBox();
-            tbRestartTime.Text = "00:00";
-            tbRestartTime.ToolTipText = "24 小时制，例如 00:00 / 06:30";
-            tbRestartTime.Margin = new Padding(26, 3, 3, 3);   // 框内时间与分组标题、「自定义」左对齐
-            ToolStripMenuItem miApply = new ToolStripMenuItem("自定义");
-            miApply.Click += delegate { SetRestartTime(tbRestartTime.Text.Trim()); };
-
-            ToolStripLabel lbGroup = new ToolStripLabel("重启时间");
-            lbGroup.ForeColor = Color.Gray;
-            lbGroup.Padding = new Padding(26, 0, 0, 0);
+            // 托盘下拉菜单里的 ToolStripTextBox 拿不稳输入焦点（输入常被菜单吞掉，读到的还是旧值），
+            // 改为点「自定义」弹出独立小窗口输入；设定时间直接回显在这个菜单项上。
+            miRestartApply = new ToolStripMenuItem();
+            miRestartApply.Click += delegate { AskRestartTime(); };
             miRestartCancel = new ToolStripMenuItem("取消本次重启");
             miRestartCancel.Click += delegate { CancelPendingRestart(); };
             miRestartCancelSep = new ToolStripSeparator();
@@ -1886,9 +1880,7 @@ namespace CNLC
                 Font ui = UiFont();
                 miRestartEnable.Font = ui;
                 miRestartState.Font = ui;
-                lbGroup.Font = ui;
-                tbRestartTime.Font = ui;
-                miApply.Font = ui;
+                miRestartApply.Font = ui;
                 miRestartCancel.Font = ui;
             }
             catch { }
@@ -1896,9 +1888,7 @@ namespace CNLC
             root.DropDownItems.Add(miRestartEnable);
             root.DropDownItems.Add(miRestartState);
             root.DropDownItems.Add(new ToolStripSeparator());
-            root.DropDownItems.Add(lbGroup);
-            root.DropDownItems.Add(tbRestartTime);
-            root.DropDownItems.Add(miApply);
+            root.DropDownItems.Add(miRestartApply);
             root.DropDownItems.Add(miRestartCancelSep);
             root.DropDownItems.Add(miRestartCancel);
             root.DropDownOpening += delegate
@@ -1917,13 +1907,14 @@ namespace CNLC
             restartTime = IsValidTime(hhmm) ? hhmm : "00:00";
             miRestartEnable.Checked = on;
             // 当天已触发或已取消时，别再显示「还有 X 小时」——实际要等明天
-            // 状态行只说还剩多久；当前设定时间看下面的输入框即可
+            // 状态行只说还剩多久；当前设定时间看「自定义（HH:MM）」菜单项
             if (!on) miRestartState.Text = "未启用";
             else if (string.Equals(ReadRestartLastDate(), TodayStr()))
                 miRestartState.Text = "今日已跳过 · 下次明天 " + restartTime;
             else
                 miRestartState.Text = "距重启 " + RemainingText(restartTime);
-            if (tbRestartTime != null) tbRestartTime.Text = restartTime;
+            // 设定时间回显在「自定义（HH:MM）」上（输入框已改为弹窗）
+            if (miRestartApply != null) miRestartApply.Text = "自定义（" + restartTime + "）";
             SetRestartPending(restartPending);   // 菜单每次展开时同步「取消重启」的显示状态
         }
 
@@ -2035,6 +2026,74 @@ namespace CNLC
             ShowToast(on
                 ? RestartToastText("已启用", ReadRestartTime())
                 : "已关闭每日定时重启。", false);
+        }
+
+        // 自定义时间：独立小窗口输入。托盘下拉菜单里的 ToolStripTextBox 拿不稳输入焦点，
+        // 用户改完点「自定义」读到的仍是旧值，故把输入交给普通 Form 托管。
+        private static void AskRestartTime()
+        {
+            if (restartInputForm != null && !restartInputForm.IsDisposed)
+            {
+                try { restartInputForm.Activate(); } catch { }
+                return;
+            }
+            try
+            {
+                Form f = new Form();
+                f.FormBorderStyle = FormBorderStyle.None;
+                f.StartPosition = FormStartPosition.CenterScreen;
+                f.TopMost = true;
+                f.BackColor = Color.White;
+                f.AutoScaleMode = AutoScaleMode.None;
+                try { f.Font = UiFont(); } catch { }
+                f.ClientSize = new Size(X(360), X(140));
+                restartInputForm = f;
+                f.FormClosed += delegate { restartInputForm = null; };
+
+                Label lb = new Label();
+                lb.Text = "重启时间 HH:MM（回车确定 · Esc 取消）";
+                lb.AutoSize = false;
+                lb.Bounds = new Rectangle(X(18), X(14), X(324), X(26));
+                try { lb.Font = UiFont(); } catch { }
+                f.Controls.Add(lb);
+
+                TextBox tb = new TextBox();
+                tb.Text = ReadRestartTime();
+                tb.BorderStyle = BorderStyle.FixedSingle;
+                tb.Bounds = new Rectangle(X(18), X(48), X(196), X(30));
+                try { tb.Font = UiFont(); } catch { }
+                f.Controls.Add(tb);
+
+                Button btn = new Button();
+                btn.Text = "确定";
+                btn.Bounds = new Rectangle(X(224), X(48), X(118), X(30));
+                try { btn.Font = UiFont(); } catch { }
+                f.Controls.Add(btn);
+
+                Label err = new Label();
+                err.Text = "";
+                err.ForeColor = Color.Red;
+                err.AutoSize = false;
+                err.Bounds = new Rectangle(X(18), X(88), X(324), X(26));
+                try { err.Font = UiFont(); } catch { }
+                f.Controls.Add(err);
+
+                btn.Click += delegate
+                {
+                    string v = tb.Text.Trim();
+                    if (!IsValidTime(v)) { err.Text = "格式不对，请用 HH:MM，例如 00:00"; return; }
+                    f.Close();
+                    SetRestartTime(v);
+                };
+                tb.KeyDown += delegate(object s, KeyEventArgs e)
+                {
+                    if (e.KeyCode == Keys.Escape) { f.Close(); return; }
+                    if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; btn.PerformClick(); }
+                };
+                f.Shown += delegate { tb.Focus(); tb.SelectAll(); };
+                f.Show();   // 非模态：不阻塞 UI 线程，避免托盘假死
+            }
+            catch (Exception ex) { restartInputForm = null; ShowToast("打开时间输入失败：" + ex.Message, true); }
         }
 
         private static void SetRestartTime(string hhmm)
