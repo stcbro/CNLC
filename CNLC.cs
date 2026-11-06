@@ -1953,6 +1953,9 @@ namespace CNLC
         // schtasks 调用放后台线程，结果经 Ui 回调；任何异常都提示，不再静默吞掉。
         private static void SetRestartEnabled(bool on)
         {
+            Log(">>> SetRestartEnabled 进入: on=" + on + " 线程=" +
+                (System.Threading.Thread.CurrentThread.IsBackground ? "后台" : "UI"));
+            ShowToast((on ? "正在启用" : "正在关闭") + "定时重启…", false);   // 入口即时反馈
             string t = ReadRestartTime();
             RunBg(delegate
             {
@@ -1987,37 +1990,40 @@ namespace CNLC
 
         private static void SetRestartTime(string hhmm)
         {
+            Log(">>> SetRestartTime 进入: [" + hhmm + "] 线程=" +
+                (System.Threading.Thread.CurrentThread.IsBackground ? "后台" : "UI"));
             if (!IsValidTime(hhmm))
             {
                 ShowToast("时间格式不对，请用 24 小时制 HH:MM，例如 00:00、06:30。", true);
                 return;
             }
+            ShowToast("正在设置 " + hhmm + "，请稍候…", false);   // 入口即时反馈：证明点击已触发
             RunBg(delegate
             {
+                Log(">>> SetRestartTime 后台开始: " + hhmm);
+                int rc = -1;
                 try
                 {
-                    int rc = RestartTaskExists()
+                    rc = RestartTaskExists()
                         ? RunSchtasks("/change /tn \"" + RestartTaskName + "\" /st " + hhmm)
                         : RunSchtasks(BuildRestartTaskArgs(hhmm));
-                    Ui(delegate
-                    {
-                        if (rc != 0)
-                        {
-                            ShowToast("设置重启时间失败（schtasks 返回 " + rc + "）。", true);
-                            return;
-                        }
-                        WriteRestartTime(hhmm);
-                        ApplyRestartMenuState(true, hhmm);
-                        Log("定时重启时间设为 " + hhmm + "（计划任务已启用）");
-                        ShowToast("已设置：每日 " + hhmm + " 重启电脑。空闲满 " + RestartIdleMinutes +
-                            " 分钟后才执行，重启前留 " + RestartCountdownSec + " 秒可取消。", false);
-                    });
                 }
-                catch (Exception ex)
+                catch (Exception ex) { Log(">>> SetRestartTime RunSchtasks 异常: " + ex.Message); }
+                Log(">>> SetRestartTime schtasks rc=" + rc);
+                Ui(delegate
                 {
-                    Log("SetRestartTime 异常: " + ex.Message);
-                    Ui(delegate { ShowToast("时间设置异常：" + ex.Message, true); });
-                }
+                    Log(">>> SetRestartTime Ui 回调开始");
+                    if (rc != 0)
+                    {
+                        ShowToast("设置重启时间失败（schtasks 返回 " + rc + "）。", true);
+                        return;
+                    }
+                    WriteRestartTime(hhmm);
+                    ApplyRestartMenuState(true, hhmm);
+                    Log("定时重启时间设为 " + hhmm + "（计划任务已启用）");
+                    ShowToast("已设置：每日 " + hhmm + " 重启电脑。空闲满 " + RestartIdleMinutes +
+                        " 分钟后才执行，重启前留 " + RestartCountdownSec + " 秒可取消。", false);
+                });
             });
         }
 
