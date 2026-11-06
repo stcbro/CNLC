@@ -1858,7 +1858,7 @@ namespace CNLC
         private static ToolStripMenuItem BuildRestartMenu()
         {
             ToolStripMenuItem root = new ToolStripMenuItem("定时重启电脑");
-            miRestartEnable = new ToolStripMenuItem("启用每日定时重启");
+            miRestartEnable = new ToolStripMenuItem("启用");
             miRestartEnable.Click += delegate { SetRestartEnabled(!miRestartEnable.Checked); };
 
             // 状态行用 ToolStripLabel：不可点击，但文字保持正常黑色（禁用菜单项会被系统染灰）
@@ -1880,17 +1880,16 @@ namespace CNLC
             miRestartCancel.Click += delegate { CancelPendingRestart(); };
             miRestartCancelSep = new ToolStripSeparator();
 
-            // 整个子菜单共用一套放大加粗字体，所有项字号完全一致
+            // 与一级菜单同字号（不放大、不加粗），避免子菜单文字过大
             try
             {
                 Font ui = UiFont();
-                Font big = new Font(ui.FontFamily, ui.Size * 1.15F, FontStyle.Bold);
-                miRestartEnable.Font = big;
-                miRestartState.Font = big;
-                lbGroup.Font = big;
-                tbRestartTime.Font = big;
-                miApply.Font = big;
-                miRestartCancel.Font = big;
+                miRestartEnable.Font = ui;
+                miRestartState.Font = ui;
+                lbGroup.Font = ui;
+                tbRestartTime.Font = ui;
+                miApply.Font = ui;
+                miRestartCancel.Font = ui;
             }
             catch { }
 
