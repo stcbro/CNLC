@@ -5,7 +5,7 @@
 //  针对高校校园网（华为 AC Portal 1.1.1.3 认证）环境定制
 //  功能：登录窗口 / 托盘守护 / 断网自动重连 / 记住密码(跨电脑) /
 //        开机自登录(自启动+静默) / 雨课堂网页版快捷入口 / 注销 / 状态窗口 /
-//        定时重启电脑（程序常驻自计时 + 空闲保护 + 60 秒可取消，默认每日 00:00）
+//        定时重启电脑（程序常驻自计时 + 到点重启 + 倒计时提示，默认每日 00:00）
 //  说明：不生成日志与状态文件，保持程序目录干净（状态显示与定时重启设置存注册表）
 //  版本：1.5.0
 //  作者：Bro.Cui
@@ -37,14 +37,13 @@ namespace CNLC
         private const int MaxLoginAttempts = 10;
         private const string RunKeyPath = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
         private const string RunName = "CNLC";
-        // 定时重启电脑：CNLC 自身常驻后台、每分钟检查一次，到设定时间且当天未触发过、
-        // 且无人操作满 RestartIdleMinutes 分钟时，发 shutdown /r /t 60（60 秒可取消）。
+        // 定时重启电脑：CNLC 自身常驻后台、每分钟检查一次，到设定时间且当天未触发过就重启。
+        // 不管电脑当时是否有人在用；发 shutdown /r /t 60（60 秒倒计时提示，菜单可取消）。
         // 启用态、时间、最近触发日期均存注册表 HKCU\Software\CNLC，重启程序不丢。
         private const string RestartRegPath = "Software\\CNLC";
         private const string RestartRegTime = "RestartTime";        // 设定时间 HH:MM
         private const string RestartRegEnabled = "RestartEnabled";  // 是否启用（值 "1" 表示启用）
         private const string RestartRegLastDate = "RestartLastDate";// 最近一次已触发重启的日期 yyyy-MM-dd（防同日重复触发/重启循环）
-        private const int RestartIdleMinutes = 30;      // 无人操作满 30 分钟才允许重启
         private const int RestartCountdownSec = 60;     // shutdown /t 倒计时，期间可 /a 取消
         private const string YuketangUrl = "https://sycu.yuketang.cn/pro/portal/home/";   // 雨课堂网页版入口
         // 更新机制：update.json 指针制（与银盾 SilverShield 一致）——创建 Release 仅归档、
@@ -126,12 +125,6 @@ namespace CNLC
         // 高分屏（125%/150% 缩放）下让文字原生渲染，清晰不发虚
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool SetProcessDPIAware();
-
-        // 定时重启的空闲检测：查询当前会话最后一次键鼠输入距今多久
-        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-        private struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
 
         // ---------- 后台线程 / UI 调度 ----------
         // 网络请求（认证/探测/注销，最坏 10~20 秒超时）必须放后台线程，
@@ -813,12 +806,12 @@ namespace CNLC
             timer.Interval = CheckIntervalSec * 1000;
             timer.Tick += delegate { Tick(); };
 
-            // 常驻定时重启检查：每分钟判断一次是否到了设定时间、当天是否已触发、是否空闲达标
+            // 常驻定时重启检查：每分钟判断一次是否到了设定时间、当天是否已触发
             restartTimer = new System.Windows.Forms.Timer();
             restartTimer.Interval = 60000;
             restartTimer.Tick += delegate { CheckScheduledRestart(); };
             restartTimer.Start();
-            CheckScheduledRestart();   // 启动即查一次，开机/打开菜单前就能捕获"到点且空闲"
+            CheckScheduledRestart();   // 启动即查一次，开机正好落在设定时间窗口内也能触发
 
             Log("已最小化到系统托盘（右下角图标）。");
             Balloon("守护已开始（" + portalUser + "）：每 " + CheckIntervalSec + "s 检测一次，断网自动重连", false);
@@ -1781,11 +1774,11 @@ namespace CNLC
             WriteCredFile(content);
         }
 
-        // ================= 定时重启电脑（程序常驻自计时 + 空闲保护） =================
-        // 不再依赖 Windows 任务计划程序（部分教室/实验室机器的 schtasks.exe 会被杀软或组策略
-        // 卡死，导致设置永远"无反应"）。改为：CNLC 常驻后台，自带定时器每天在设定时间、且
-        // 无人操作满 RestartIdleMinutes 分钟时，执行 shutdown /r /t 60（60 秒倒计时，菜单可取消）。
-        // 触发记录写注册表 RestartRegLastDate，保证每天最多触发一次、且重启后不会立即再触发。
+        // ================= 定时重启电脑（程序常驻自计时，到点就重启） =================
+        // 不依赖 Windows 任务计划程序（部分教室机器的 schtasks.exe 会被杀软或组策略卡死）。
+        // CNLC 常驻后台，每分钟检查一次：到设定时间且当天未触发过 → shutdown /r /t 60。
+        // 不看电脑是否有人在用；菜单里显示距下次重启还有多久，倒计时内可取消本次重启。
+        // 触发记录写注册表 RestartRegLastDate，保证每天最多触发一次、重启后不会循环触发。
 
         private static bool IsValidTime(string s)
         {
@@ -1912,7 +1905,7 @@ namespace CNLC
             restartTime = IsValidTime(hhmm) ? hhmm : "00:00";
             miRestartEnable.Checked = on;
             miRestartState.Text = on
-                ? "当前：每日 " + restartTime + "（已启用，空闲 " + RestartIdleMinutes + " 分钟后重启）"
+                ? "当前：每日 " + restartTime + "，还有 " + RemainingText(restartTime) + " 重启"
                 : "当前：未启用（默认每日 00:00）";
             if (miRestartPresets != null)
                 foreach (ToolStripMenuItem it in miRestartPresets)
@@ -1920,6 +1913,17 @@ namespace CNLC
             if (tbRestartTime != null) tbRestartTime.Text = restartTime;
             if (miRestartTime != null)
                 miRestartTime.Text = on ? "重启时间：" + restartTime : "重启时间（未启用）";
+        }
+
+        // 距下次重启还有多久；今天已过点就算到明天（托盘菜单每次展开时刷新）
+        private static string RemainingText(string hhmm)
+        {
+            int targetMin = int.Parse(hhmm.Substring(0, 2)) * 60 + int.Parse(hhmm.Substring(3, 2));
+            int nowMin = DateTime.Now.Hour * 60 + DateTime.Now.Minute;
+            int diff = targetMin - nowMin;
+            if (diff < 0) diff += 24 * 60;
+            int h = diff / 60, m = diff % 60;
+            return h > 0 ? h + " 小时 " + m + " 分钟" : m + " 分钟";
         }
 
         // 轻量提示浮窗：置顶、非模态（不阻塞 UI）、自动关闭，必定可见；
@@ -1962,8 +1966,8 @@ namespace CNLC
             ApplyRestartMenuState(on, ReadRestartTime());
             Log("定时重启" + (on ? "已启用：每日 " : "已关闭：") + ReadRestartTime());
             ShowToast(on
-                ? "已启用：每日 " + ReadRestartTime() + " 重启电脑（仅空闲满 " + RestartIdleMinutes +
-                  " 分钟后才执行，重启前留 " + RestartCountdownSec + " 秒可取消）。"
+                ? "已启用：每日 " + ReadRestartTime() + " 重启电脑，还有 " +
+                  RemainingText(ReadRestartTime()) + "。重启前 " + RestartCountdownSec + " 秒可取消。"
                 : "已关闭每日定时重启。", false);
         }
 
@@ -1977,8 +1981,8 @@ namespace CNLC
             WriteRestartTime(hhmm);
             ApplyRestartMenuState(true, hhmm);
             Log("定时重启时间设为 " + hhmm + "（已启用）");
-            ShowToast("已设置：每日 " + hhmm + " 重启电脑。空闲满 " + RestartIdleMinutes +
-                " 分钟后才执行，重启前留 " + RestartCountdownSec + " 秒可取消。", false);
+            ShowToast("已设置：每日 " + hhmm + " 重启电脑，还有 " + RemainingText(hhmm) +
+                "。重启前 " + RestartCountdownSec + " 秒可取消。", false);
         }
 
         // 取消本次重启倒计时：shutdown /a 撤销；并把"最近触发日期"写为今天，
@@ -1994,40 +1998,31 @@ namespace CNLC
             catch (Exception ex) { ShowToast("取消失败：" + ex.Message, true); }
         }
 
-        // 常驻定时器每秒/每分钟检查一次：到时间 + 当天未触发过 + 空闲达标 → 触发重启。
+        // 每分钟检查一次：到设定时间 + 当天未触发过 → 直接触发重启，不看电脑是否有人在用。
+        // 到点后留 2 分钟容差，只为兜住定时器因系统忙碌跳过整点那一分钟，不是空闲判断。
         // 全部本地计算 + 一次 shutdown.exe 调用，绝不碰会卡死的 schtasks。
         private static void CheckScheduledRestart()
         {
             if (!ReadRestartEnabled()) return;
             string today = TodayStr();
-            if (string.Equals(ReadRestartLastDate(), today)) return;   // 今天已触发过，跳过（防同日重复/重启循环）
+            if (string.Equals(ReadRestartLastDate(), today)) return;   // 今天已触发过（防同日重复/重启循环）
             string hhmm = ReadRestartTime();
             if (!IsValidTime(hhmm)) return;
             int nowMin = DateTime.Now.Hour * 60 + DateTime.Now.Minute;
             int targetMin = int.Parse(hhmm.Substring(0, 2)) * 60 + int.Parse(hhmm.Substring(3, 2));
-            if (nowMin < targetMin) return;   // 还没到设定时间
+            if (nowMin < targetMin || nowMin - targetMin > 2) return;   // 没到点，或到点太久（当天跳过）
 #if DIAG
             Log("定时重启检查: 已到时间 目标=" + hhmm + " 当前=" + nowMin +
                 " 已触发今天=" + (ReadRestartLastDate() == today));
 #endif
-            // 空闲检查：有人在用则今天先不重启，等其离开满 RestartIdleMinutes 分钟后再触发
-            try
-            {
-                LASTINPUTINFO lii = new LASTINPUTINFO();
-                lii.cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(LASTINPUTINFO));
-                if (!GetLastInputInfo(ref lii)) return;
-                uint idleMs = (uint)Environment.TickCount - lii.dwTime;   // 无符号减法，自动处理 49.7 天回绕
-                if (idleMs < (uint)RestartIdleMinutes * 60000U) return;
-            }
-            catch { return; }
             TriggerRestart();
         }
 
         private static void TriggerRestart()
         {
             WriteRestartLastDate(TodayStr());   // 先记今天已触发，避免重启前被重复触发/重启循环
-            Log("定时重启：到时间且空闲达标，已发出 " + RestartCountdownSec + " 秒倒计时重启命令");
-            ShowToast("即将在 " + RestartCountdownSec + " 秒后重启电脑（期间可在托盘菜单“取消本次重启”撤回）。", true);
+            Log("定时重启：已到设定时间，发出 " + RestartCountdownSec + " 秒倒计时重启命令");
+            ShowToast("到点了，还有 1 分钟重启电脑（托盘菜单“取消本次重启”可撤回）。", true);
             try
             {
                 // 不加 /f：未保存文档会正常弹保存提示；倒计时内可用 shutdown /a 或托盘菜单取消
