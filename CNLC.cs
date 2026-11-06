@@ -1878,8 +1878,18 @@ namespace CNLC
             tbRestartTime = new ToolStripTextBox();
             tbRestartTime.Text = "00:00";
             tbRestartTime.ToolTipText = "24 小时制，例如 00:00 / 06:30";
-            ToolStripMenuItem miApply = new ToolStripMenuItem("应用自定义时间");
+            tbRestartTime.Margin = new Padding(26, 3, 3, 3);   // 框内时间与上面预设时间左对齐
+            ToolStripMenuItem miApply = new ToolStripMenuItem("自定义");
             miApply.Click += delegate { SetRestartTime(tbRestartTime.Text.Trim()); };
+            // 自定义标签与输入框同组放大加粗，一眼能看到、能对准
+            try
+            {
+                Font ui = UiFont();
+                Font big = new Font(ui.FontFamily, ui.Size * 1.15F, FontStyle.Bold);
+                tbRestartTime.Font = big;
+                miApply.Font = big;
+            }
+            catch { }
 
             miRestartCancel = new ToolStripMenuItem("取消本次重启");
             miRestartCancel.Click += delegate { CancelPendingRestart(); };
@@ -1959,12 +1969,13 @@ namespace CNLC
                 f.BackColor = warning ? Color.FromArgb(255, 242, 242) : Color.White;
                 f.AutoScaleMode = AutoScaleMode.None;
                 try { f.Font = UiFont(); } catch { }
-                f.ClientSize = new Size(X(360), X(96));
+                f.ClientSize = new Size(X(400), X(112));
                 Label lb = new Label();
                 lb.Text = text;
                 lb.Dock = DockStyle.Fill;
                 lb.TextAlign = ContentAlignment.MiddleCenter;
                 lb.Padding = new Padding(X(14));
+                try { lb.Font = new Font(f.Font.FontFamily, f.Font.Size * 1.3F, FontStyle.Bold); } catch { }
                 f.Controls.Add(lb);
                 f.Click += delegate(object s, EventArgs e) { try { f.Close(); } catch { } };
                 f.KeyPreview = true;
@@ -1990,18 +2001,19 @@ namespace CNLC
                 f.BackColor = Color.FromArgb(255, 242, 242);
                 f.AutoScaleMode = AutoScaleMode.None;
                 try { f.Font = UiFont(); } catch { }
-                f.ClientSize = new Size(X(360), X(120));
+                f.ClientSize = new Size(X(400), X(140));
                 Label lb = new Label();
                 lb.Text = "到点了，还有 " + (RestartCountdownSec / 60) + " 分钟重启电脑";
                 lb.TextAlign = ContentAlignment.MiddleCenter;
                 lb.Dock = DockStyle.Top;
-                lb.Height = X(66);
+                lb.Height = X(78);
+                try { lb.Font = new Font(f.Font.FontFamily, f.Font.Size * 1.4F, FontStyle.Bold); } catch { }
                 f.Controls.Add(lb);
                 Button btn = new Button();
                 btn.Text = "取消重启";
-                try { btn.Font = UiFont(); } catch { }
-                btn.Size = new Size(X(140), X(34));
-                btn.Location = new Point((f.ClientSize.Width - btn.Width) / 2, X(72));
+                try { btn.Font = new Font(f.Font.FontFamily, f.Font.Size * 1.25F, FontStyle.Bold); } catch { }
+                btn.Size = new Size(X(160), X(42));
+                btn.Location = new Point((f.ClientSize.Width - btn.Width) / 2, X(88));
                 btn.Click += delegate { try { f.Close(); } catch { } CancelPendingRestart(); };
                 f.Controls.Add(btn);
                 f.Show();   // 不自动关闭：倒计时结束系统重启，浮窗随进程消失
