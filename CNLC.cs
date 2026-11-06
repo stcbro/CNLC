@@ -1821,10 +1821,18 @@ namespace CNLC
                 psi.RedirectStandardError = true;
                 using (System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi))
                 {
-                    p.StandardOutput.ReadToEnd();
-                    string err = p.StandardError.ReadToEnd();
+                    // 异步读两路流：schtasks 输出若同时写 stdout/stderr，顺序 ReadToEnd 会因
+                    // 缓冲区撑满而死锁后台线程——表现为点击定时重启"无反应"。异步读彻底规避。
+                    StringBuilder err = new StringBuilder();
+                    p.OutputDataReceived += delegate(object s, System.Diagnostics.DataReceivedEventArgs e) { };
+                    p.ErrorDataReceived += delegate(object s, System.Diagnostics.DataReceivedEventArgs e)
+                    {
+                        if (e.Data != null) err.AppendLine(e.Data);
+                    };
+                    p.BeginOutputReadLine();
+                    p.BeginErrorReadLine();
                     if (!p.WaitForExit(10000)) { try { p.Kill(); } catch { } return -1; }
-                    if (err.Trim().Length > 0) Log("定时任务: " + err.Trim());
+                    if (err.Length > 0) Log("定时任务: " + err.ToString().Trim());
                     return p.ExitCode;
                 }
             }
@@ -1908,29 +1916,72 @@ namespace CNLC
             if (tbRestartTime != null) tbRestartTime.Text = restartTime;
         }
 
-        // schtasks 同步调用可阻塞数秒，必须放后台线程，结果经 Ui 回调弹窗；
-        // 弹窗必须用 Msg（挂主界面为 owner）——无 owner 的模态框会被压底层且
-        // 卡死 UI 线程，表现为托盘左右键全部失灵（v1.5.0 曾触发此 bug）
+        // 轻量提示浮窗：置顶、非模态（不阻塞 UI）、自动关闭，必定可见；
+        // 不受 ShowNotify 静默开关影响，也规避"MessageBox 挂隐藏主界面被压底不弹出"的问题。
+        private static void ShowToast(string text, bool warning)
+        {
+            try
+            {
+                Form f = new Form();
+                f.FormBorderStyle = FormBorderStyle.None;
+                f.StartPosition = FormStartPosition.CenterScreen;
+                f.TopMost = true;
+                f.BackColor = warning ? Color.FromArgb(255, 242, 242) : Color.White;
+                f.AutoScaleMode = AutoScaleMode.None;
+                try { f.Font = UiFont(); } catch { }
+                f.ClientSize = new Size(X(360), X(96));
+                Label lb = new Label();
+                lb.Text = text;
+                lb.Dock = DockStyle.Fill;
+                lb.TextAlign = ContentAlignment.MiddleCenter;
+                lb.Padding = new Padding(X(14));
+                f.Controls.Add(lb);
+                f.Click += delegate(object s, EventArgs e) { try { f.Close(); } catch { } };
+                f.KeyPreview = true;
+                f.KeyDown += delegate(object s, KeyEventArgs e) { try { f.Close(); } catch { } };
+                f.Show();
+                System.Windows.Forms.Timer tm = new System.Windows.Forms.Timer();
+                tm.Interval = 4000;
+                tm.Tick += delegate(object s, EventArgs e) { tm.Stop(); try { f.Close(); } catch { } };
+                tm.Start();
+            }
+            catch { }
+        }
+
+        // 反馈统一走置顶浮窗（ShowToast）：主界面是隐藏的托盘程序，MessageBox 挂隐藏窗口做
+        // owner 会被压底层不弹出（表现为"点了没反应"），浮窗则必定可见、且不卡 UI 线程。
+        // schtasks 调用放后台线程，结果经 Ui 回调；任何异常都提示，不再静默吞掉。
         private static void SetRestartEnabled(bool on)
         {
             string t = ReadRestartTime();
             RunBg(delegate
             {
-                int rc = on
-                    ? RunSchtasks(BuildRestartTaskArgs(t))
-                    : RunSchtasks("/delete /tn \"" + RestartTaskName + "\" /f");
-                Ui(delegate
+                try
                 {
-                    if (rc != 0)
+                    int rc = on
+                        ? RunSchtasks(BuildRestartTaskArgs(t))
+                        : RunSchtasks("/delete /tn \"" + RestartTaskName + "\" /f");
+                    Ui(delegate
                     {
-                        Msg((on ? "创建" : "关闭") + "定时重启任务失败（schtasks 返回 " + rc +
-                            "）。\n请确认当前 Windows 账户允许创建计划任务。", "定时重启");
-                        return;
-                    }
-                    if (on) { WriteRestartTime(t); Log("定时重启已启用：每日 " + t); }
-                    else Log("定时重启已关闭");
-                    ApplyRestartMenuState(on, ReadRestartTime());
-                });
+                        if (rc != 0)
+                        {
+                            ShowToast((on ? "启用" : "关闭") + "定时重启失败（schtasks 返回 " + rc +
+                                "），请确认当前账户可创建计划任务。", true);
+                            return;
+                        }
+                        if (on) { WriteRestartTime(t); Log("定时重启已启用：每日 " + t); }
+                        else Log("定时重启已关闭");
+                        ApplyRestartMenuState(on, ReadRestartTime());
+                        ShowToast(on
+                            ? "已启用：每日 " + t + " 重启电脑（仅空闲满 " + RestartIdleMinutes + " 分钟后才执行）。"
+                            : "已关闭每日定时重启。", false);
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Log("SetRestartEnabled 异常: " + ex.Message);
+                    Ui(delegate { ShowToast("定时重启设置异常：" + ex.Message, true); });
+                }
             });
         }
 
@@ -1938,27 +1989,35 @@ namespace CNLC
         {
             if (!IsValidTime(hhmm))
             {
-                Msg("时间格式不对，请用 24 小时制 HH:MM，例如 00:00、06:30。", "定时重启");
+                ShowToast("时间格式不对，请用 24 小时制 HH:MM，例如 00:00、06:30。", true);
                 return;
             }
             RunBg(delegate
             {
-                int rc = RestartTaskExists()
-                    ? RunSchtasks("/change /tn \"" + RestartTaskName + "\" /st " + hhmm)
-                    : RunSchtasks(BuildRestartTaskArgs(hhmm));
-                Ui(delegate
+                try
                 {
-                    if (rc != 0)
+                    int rc = RestartTaskExists()
+                        ? RunSchtasks("/change /tn \"" + RestartTaskName + "\" /st " + hhmm)
+                        : RunSchtasks(BuildRestartTaskArgs(hhmm));
+                    Ui(delegate
                     {
-                        Msg("设置重启时间失败（schtasks 返回 " + rc + "）。", "定时重启");
-                        return;
-                    }
-                    WriteRestartTime(hhmm);
-                    ApplyRestartMenuState(true, hhmm);
-                    Log("定时重启时间设为 " + hhmm + "（计划任务已启用）");
-                    Msg("已设置：每日 " + hhmm + " 重启电脑。\n\n仅在无人操作满 " + RestartIdleMinutes +
-                        " 分钟时执行，重启前留 " + RestartCountdownSec + " 秒倒计时，可在菜单里取消。", "定时重启");
-                });
+                        if (rc != 0)
+                        {
+                            ShowToast("设置重启时间失败（schtasks 返回 " + rc + "）。", true);
+                            return;
+                        }
+                        WriteRestartTime(hhmm);
+                        ApplyRestartMenuState(true, hhmm);
+                        Log("定时重启时间设为 " + hhmm + "（计划任务已启用）");
+                        ShowToast("已设置：每日 " + hhmm + " 重启电脑。空闲满 " + RestartIdleMinutes +
+                            " 分钟后才执行，重启前留 " + RestartCountdownSec + " 秒可取消。", false);
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Log("SetRestartTime 异常: " + ex.Message);
+                    Ui(delegate { ShowToast("时间设置异常：" + ex.Message, true); });
+                }
             });
         }
 
@@ -1967,10 +2026,9 @@ namespace CNLC
             try
             {
                 System.Diagnostics.Process.Start("shutdown.exe", "/a");
-                Msg("已发出取消命令。若当前没有待执行的重启倒计时，" +
-                    "系统会提示“没有进行中的关机”，属正常现象。", "定时重启");
+                ShowToast("已发出取消命令。若当前没有待执行的重启倒计时，系统会提示“没有进行中的关机”，属正常。", false);
             }
-            catch (Exception ex) { Msg("取消失败：" + ex.Message, "定时重启"); }
+            catch (Exception ex) { ShowToast("取消失败：" + ex.Message, true); }
         }
 
         private static void RestartCheckAndExit()
