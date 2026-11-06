@@ -37,12 +37,13 @@ namespace CNLC
         private const int MaxLoginAttempts = 10;
         private const string RunKeyPath = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
         private const string RunName = "CNLC";
-        // 定时重启电脑：Windows 计划任务每日 HH:MM 拉起 "CNLC.exe -RestartCheck"，
-        // 该实例只判断空闲并决定是否发重启命令，不建窗口/托盘/互斥锁。
-        // 真实执行时间存在计划任务 /st 里（重启程序不丢），注册表仅用于托盘菜单回显。
-        private const string RestartTaskName = "CNLC_AutoRestart";
+        // 定时重启电脑：CNLC 自身常驻后台、每分钟检查一次，到设定时间且当天未触发过、
+        // 且无人操作满 RestartIdleMinutes 分钟时，发 shutdown /r /t 60（60 秒可取消）。
+        // 启用态、时间、最近触发日期均存注册表 HKCU\Software\CNLC，重启程序不丢。
         private const string RestartRegPath = "Software\\CNLC";
-        private const string RestartRegTime = "RestartTime";
+        private const string RestartRegTime = "RestartTime";        // 设定时间 HH:MM
+        private const string RestartRegEnabled = "RestartEnabled";  // 是否启用（值 "1" 表示启用）
+        private const string RestartRegLastDate = "RestartLastDate";// 最近一次已触发重启的日期 yyyy-MM-dd（防同日重复触发/重启循环）
         private const int RestartIdleMinutes = 30;      // 无人操作满 30 分钟才允许重启
         private const int RestartCountdownSec = 60;     // shutdown /t 倒计时，期间可 /a 取消
         private const string YuketangUrl = "https://sycu.yuketang.cn/pro/portal/home/";   // 雨课堂网页版入口
@@ -94,6 +95,7 @@ namespace CNLC
         private static bool restartTaskOn = false;
         private static string restartTime = "00:00";
         private static System.Windows.Forms.Timer timer;
+        private static System.Windows.Forms.Timer restartTimer;   // 常驻定时重启检查（每分钟一次）
         private static bool GuardOn = false;
         private static bool ExtendedRetry = false;
         private static string portalUser = "";
@@ -216,16 +218,12 @@ namespace CNLC
                 Log("未处理异常(进程将退出): " + e.ExceptionObject);
             };
 
-            bool autoStart = false, updatedLaunch = false, restartCheck = false;
+            bool autoStart = false, updatedLaunch = false;
             foreach (string a in args)
             {
                 if (string.Equals(a, "-AutoStart", StringComparison.OrdinalIgnoreCase)) autoStart = true;
                 else if (string.Equals(a, "-Updated", StringComparison.OrdinalIgnoreCase)) updatedLaunch = true;
-                else if (string.Equals(a, "-RestartCheck", StringComparison.OrdinalIgnoreCase)) restartCheck = true;
             }
-            // 计划任务拉起的检查实例：不建窗口/托盘、不抢单实例互斥锁，判断完空闲立即退出，
-            // 因此不会干扰常驻实例；未达空闲阈值则静默跳过当天
-            if (restartCheck) { RestartCheckAndExit(); return; }
 #if DIAG
             Log("Main 进入，args=[" + string.Join(" ", args) + "]");
 #endif
@@ -813,6 +811,13 @@ namespace CNLC
             timer = new System.Windows.Forms.Timer();
             timer.Interval = CheckIntervalSec * 1000;
             timer.Tick += delegate { Tick(); };
+
+            // 常驻定时重启检查：每分钟判断一次是否到了设定时间、当天是否已触发、是否空闲达标
+            restartTimer = new System.Windows.Forms.Timer();
+            restartTimer.Interval = 60000;
+            restartTimer.Tick += delegate { CheckScheduledRestart(); };
+            restartTimer.Start();
+            CheckScheduledRestart();   // 启动即查一次，开机/打开菜单前就能捕获"到点且空闲"
 
             Log("已最小化到系统托盘（右下角图标）。");
             Balloon("守护已开始（" + portalUser + "）：每 " + CheckIntervalSec + "s 检测一次，断网自动重连", false);
@@ -1775,11 +1780,11 @@ namespace CNLC
             WriteCredFile(content);
         }
 
-        // ================= 定时重启电脑（计划任务 + 空闲保护） =================
-        // 执行链：Windows 计划任务每日 HH:MM → "CNLC.exe -RestartCheck" → 空闲达标 →
-        //         shutdown /r /t 60 → 60 秒倒计时（菜单可取消）→ 重启 → 开机自启恢复网络。
-        // 只调用系统自带 schtasks.exe / shutdown.exe，不调用脚本宿主，避免杀软误报。
-        // 计划任务以当前用户交互令牌运行，不需要管理员权限。
+        // ================= 定时重启电脑（程序常驻自计时 + 空闲保护） =================
+        // 不再依赖 Windows 任务计划程序（部分教室/实验室机器的 schtasks.exe 会被杀软或组策略
+        // 卡死，导致设置永远"无反应"）。改为：CNLC 常驻后台，自带定时器每天在设定时间、且
+        // 无人操作满 RestartIdleMinutes 分钟时，执行 shutdown /r /t 60（60 秒倒计时，菜单可取消）。
+        // 触发记录写注册表 RestartRegLastDate，保证每天最多触发一次、且重启后不会立即再触发。
 
         private static bool IsValidTime(string s)
         {
@@ -1809,47 +1814,49 @@ namespace CNLC
             catch { }
         }
 
-        private static int RunSchtasks(string arguments)
+        private static bool ReadRestartEnabled()
         {
             try
             {
-                System.Diagnostics.ProcessStartInfo psi =
-                    new System.Diagnostics.ProcessStartInfo("schtasks.exe", arguments);
-                psi.UseShellExecute = false;
-                psi.CreateNoWindow = true;
-                psi.RedirectStandardOutput = true;
-                psi.RedirectStandardError = true;
-                using (System.Diagnostics.Process p = System.Diagnostics.Process.Start(psi))
-                {
-                    // 异步读两路流：schtasks 输出若同时写 stdout/stderr，顺序 ReadToEnd 会因
-                    // 缓冲区撑满而死锁后台线程——表现为点击定时重启"无反应"。异步读彻底规避。
-                    StringBuilder err = new StringBuilder();
-                    p.OutputDataReceived += delegate(object s, System.Diagnostics.DataReceivedEventArgs e) { };
-                    p.ErrorDataReceived += delegate(object s, System.Diagnostics.DataReceivedEventArgs e)
-                    {
-                        if (e.Data != null) err.AppendLine(e.Data);
-                    };
-                    p.BeginOutputReadLine();
-                    p.BeginErrorReadLine();
-                    if (!p.WaitForExit(10000)) { try { p.Kill(); } catch { } return -1; }
-                    if (err.Length > 0) Log("定时任务: " + err.ToString().Trim());
-                    return p.ExitCode;
-                }
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RestartRegPath))
+                    return key != null && string.Equals(key.GetValue(RestartRegEnabled) as string, "1");
             }
-            catch (Exception ex) { Log("定时任务调用异常: " + ex.Message); return -1; }
+            catch { return false; }
         }
 
-        private static bool RestartTaskExists()
+        private static void WriteRestartEnabled(bool on)
         {
-            return RunSchtasks("/query /tn \"" + RestartTaskName + "\"") == 0;
+            try
+            {
+                using (RegistryKey key = Registry.CurrentUser.CreateSubKey(RestartRegPath))
+                    key.SetValue(RestartRegEnabled, on ? "1" : "0");
+            }
+            catch { }
         }
 
-        // /tr 的值要在整体引号里再给 exe 路径加转义引号（程序目录常含空格）
-        private static string BuildRestartTaskArgs(string hhmm)
+        private static string TodayStr()
         {
-            string tr = "\"" + "\\\"" + Application.ExecutablePath + "\\\"" + " -RestartCheck" + "\"";
-            return "/create /tn \"" + RestartTaskName + "\" /tr " + tr +
-                   " /sc daily /st " + hhmm + " /f";
+            return DateTime.Now.ToString("yyyy-MM-dd");
+        }
+
+        private static string ReadRestartLastDate()
+        {
+            try
+            {
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RestartRegPath))
+                    return key == null ? "" : (key.GetValue(RestartRegLastDate) as string) ?? "";
+            }
+            catch { return ""; }
+        }
+
+        private static void WriteRestartLastDate(string ymd)
+        {
+            try
+            {
+                using (RegistryKey key = Registry.CurrentUser.CreateSubKey(RestartRegPath))
+                    key.SetValue(RestartRegLastDate, ymd);
+            }
+            catch { }
         }
 
         private static ToolStripMenuItem BuildRestartMenu()
@@ -1889,15 +1896,10 @@ namespace CNLC
             root.DropDownItems.Add(miCancel);
             root.DropDownOpening += delegate
             {
-                // 查询计划任务约需 0.3~1 秒，放后台避免右键菜单卡顿
-                RunBg(delegate
-                {
-                    bool on = RestartTaskExists();
-                    string t = ReadRestartTime();
-                    Ui(delegate { ApplyRestartMenuState(on, t); });
-                });
+                // 启用态与时间都来自注册表，本地瞬时读取，无需后台线程
+                ApplyRestartMenuState(ReadRestartEnabled(), ReadRestartTime());
             };
-            ApplyRestartMenuState(false, ReadRestartTime());
+            ApplyRestartMenuState(ReadRestartEnabled(), ReadRestartTime());
             return root;
         }
 
@@ -1948,115 +1950,87 @@ namespace CNLC
             catch { }
         }
 
-        // 反馈统一走置顶浮窗（ShowToast）：主界面是隐藏的托盘程序，MessageBox 挂隐藏窗口做
-        // owner 会被压底层不弹出（表现为"点了没反应"），浮窗则必定可见、且不卡 UI 线程。
-        // schtasks 调用放后台线程，结果经 Ui 回调；任何异常都提示，不再静默吞掉。
+        // 启用/关闭只写注册表（纯本地、瞬时、不碰任何外部进程），菜单点击在 UI 线程同步完成即可。
+        // 反馈走置顶浮窗（ShowToast）：主界面是隐藏的托盘程序，MessageBox 挂隐藏窗口会被压底不弹出。
         private static void SetRestartEnabled(bool on)
         {
-            Log(">>> SetRestartEnabled 进入: on=" + on + " 线程=" +
-                (System.Threading.Thread.CurrentThread.IsBackground ? "后台" : "UI"));
-            ShowToast((on ? "正在启用" : "正在关闭") + "定时重启…", false);   // 入口即时反馈
-            string t = ReadRestartTime();
-            RunBg(delegate
-            {
-                try
-                {
-                    int rc = on
-                        ? RunSchtasks(BuildRestartTaskArgs(t))
-                        : RunSchtasks("/delete /tn \"" + RestartTaskName + "\" /f");
-                    Ui(delegate
-                    {
-                        if (rc != 0)
-                        {
-                            ShowToast((on ? "启用" : "关闭") + "定时重启失败（schtasks 返回 " + rc +
-                                "），请确认当前账户可创建计划任务。", true);
-                            return;
-                        }
-                        if (on) { WriteRestartTime(t); Log("定时重启已启用：每日 " + t); }
-                        else Log("定时重启已关闭");
-                        ApplyRestartMenuState(on, ReadRestartTime());
-                        ShowToast(on
-                            ? "已启用：每日 " + t + " 重启电脑（仅空闲满 " + RestartIdleMinutes + " 分钟后才执行）。"
-                            : "已关闭每日定时重启。", false);
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Log("SetRestartEnabled 异常: " + ex.Message);
-                    Ui(delegate { ShowToast("定时重启设置异常：" + ex.Message, true); });
-                }
-            });
+            WriteRestartEnabled(on);
+            ApplyRestartMenuState(on, ReadRestartTime());
+            Log("定时重启" + (on ? "已启用：每日 " : "已关闭：") + ReadRestartTime());
+            ShowToast(on
+                ? "已启用：每日 " + ReadRestartTime() + " 重启电脑（仅空闲满 " + RestartIdleMinutes +
+                  " 分钟后才执行，重启前留 " + RestartCountdownSec + " 秒可取消）。"
+                : "已关闭每日定时重启。", false);
         }
 
         private static void SetRestartTime(string hhmm)
         {
-            Log(">>> SetRestartTime 进入: [" + hhmm + "] 线程=" +
-                (System.Threading.Thread.CurrentThread.IsBackground ? "后台" : "UI"));
             if (!IsValidTime(hhmm))
             {
                 ShowToast("时间格式不对，请用 24 小时制 HH:MM，例如 00:00、06:30。", true);
                 return;
             }
-            ShowToast("正在设置 " + hhmm + "，请稍候…", false);   // 入口即时反馈：证明点击已触发
-            RunBg(delegate
-            {
-                Log(">>> SetRestartTime 后台开始: " + hhmm);
-                int rc = -1;
-                try
-                {
-                    rc = RestartTaskExists()
-                        ? RunSchtasks("/change /tn \"" + RestartTaskName + "\" /st " + hhmm)
-                        : RunSchtasks(BuildRestartTaskArgs(hhmm));
-                }
-                catch (Exception ex) { Log(">>> SetRestartTime RunSchtasks 异常: " + ex.Message); }
-                Log(">>> SetRestartTime schtasks rc=" + rc);
-                Ui(delegate
-                {
-                    Log(">>> SetRestartTime Ui 回调开始");
-                    if (rc != 0)
-                    {
-                        ShowToast("设置重启时间失败（schtasks 返回 " + rc + "）。", true);
-                        return;
-                    }
-                    WriteRestartTime(hhmm);
-                    ApplyRestartMenuState(true, hhmm);
-                    Log("定时重启时间设为 " + hhmm + "（计划任务已启用）");
-                    ShowToast("已设置：每日 " + hhmm + " 重启电脑。空闲满 " + RestartIdleMinutes +
-                        " 分钟后才执行，重启前留 " + RestartCountdownSec + " 秒可取消。", false);
-                });
-            });
+            WriteRestartTime(hhmm);
+            ApplyRestartMenuState(true, hhmm);
+            Log("定时重启时间设为 " + hhmm + "（已启用）");
+            ShowToast("已设置：每日 " + hhmm + " 重启电脑。空闲满 " + RestartIdleMinutes +
+                " 分钟后才执行，重启前留 " + RestartCountdownSec + " 秒可取消。", false);
         }
 
+        // 取消本次重启倒计时：shutdown /a 撤销；并把"最近触发日期"写为今天，
+        // 这样当天不会再被计时器重新触发（用户主动取消=当天跳过）。
         private static void CancelPendingRestart()
         {
             try
             {
                 System.Diagnostics.Process.Start("shutdown.exe", "/a");
-                ShowToast("已发出取消命令。若当前没有待执行的重启倒计时，系统会提示“没有进行中的关机”，属正常。", false);
+                WriteRestartLastDate(TodayStr());
+                ShowToast("已取消本次重启。若当前没有待执行的重启倒计时，系统会提示“没有进行中的关机”，属正常。", false);
             }
             catch (Exception ex) { ShowToast("取消失败：" + ex.Message, true); }
         }
 
-        private static void RestartCheckAndExit()
+        // 常驻定时器每秒/每分钟检查一次：到时间 + 当天未触发过 + 空闲达标 → 触发重启。
+        // 全部本地计算 + 一次 shutdown.exe 调用，绝不碰会卡死的 schtasks。
+        private static void CheckScheduledRestart()
         {
+            if (!ReadRestartEnabled()) return;
+            string today = TodayStr();
+            if (string.Equals(ReadRestartLastDate(), today)) return;   // 今天已触发过，跳过（防同日重复/重启循环）
+            string hhmm = ReadRestartTime();
+            if (!IsValidTime(hhmm)) return;
+            int nowMin = DateTime.Now.Hour * 60 + DateTime.Now.Minute;
+            int targetMin = int.Parse(hhmm.Substring(0, 2)) * 60 + int.Parse(hhmm.Substring(3, 2));
+            if (nowMin < targetMin) return;   // 还没到设定时间
+#if DIAG
+            Log("定时重启检查: 已到时间 目标=" + hhmm + " 当前=" + nowMin +
+                " 已触发今天=" + (ReadRestartLastDate() == today));
+#endif
+            // 空闲检查：有人在用则今天先不重启，等其离开满 RestartIdleMinutes 分钟后再触发
             try
             {
                 LASTINPUTINFO lii = new LASTINPUTINFO();
                 lii.cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(LASTINPUTINFO));
-                if (!GetLastInputInfo(ref lii)) { Log("定时重启：空闲信息读取失败，本次跳过"); return; }
-                // 无符号减法：Environment.TickCount 约 49.7 天回绕，照样能算出正确空闲时长
-                uint idleMs = (uint)Environment.TickCount - lii.dwTime;
-                if (idleMs < (uint)RestartIdleMinutes * 60000U)
-                {
-                    Log("定时重启：有人在使用（空闲 " + (idleMs / 60000U) + " 分钟），本次跳过");
-                    return;
-                }
-                // 不加 /f：未保存文档会正常弹保存提示；60 秒内可用 shutdown /a 或托盘菜单取消
+                if (!GetLastInputInfo(ref lii)) return;
+                uint idleMs = (uint)Environment.TickCount - lii.dwTime;   // 无符号减法，自动处理 49.7 天回绕
+                if (idleMs < (uint)RestartIdleMinutes * 60000U) return;
+            }
+            catch { return; }
+            TriggerRestart();
+        }
+
+        private static void TriggerRestart()
+        {
+            WriteRestartLastDate(TodayStr());   // 先记今天已触发，避免重启前被重复触发/重启循环
+            Log("定时重启：到时间且空闲达标，已发出 " + RestartCountdownSec + " 秒倒计时重启命令");
+            ShowToast("即将在 " + RestartCountdownSec + " 秒后重启电脑（期间可在托盘菜单“取消本次重启”撤回）。", true);
+            try
+            {
+                // 不加 /f：未保存文档会正常弹保存提示；倒计时内可用 shutdown /a 或托盘菜单取消
                 System.Diagnostics.Process.Start("shutdown.exe",
                     "/r /t " + RestartCountdownSec + " /c \"CNLC scheduled maintenance restart\"");
-                Log("定时重启：空闲达标，已发出 " + RestartCountdownSec + " 秒倒计时重启命令");
             }
-            catch (Exception ex) { Log("定时重启检查异常: " + ex.Message); }
+            catch (Exception ex) { Log("定时重启执行异常: " + ex.Message); }
         }
     }
 }
