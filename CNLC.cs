@@ -7,7 +7,7 @@
 //        开机自登录(自启动+静默) / 雨课堂网页版快捷入口 / 注销 / 状态窗口 /
 //        定时重启电脑（程序常驻自计时 + 到点重启 + 倒计时提示，默认每日 00:00）
 //  说明：不生成日志与状态文件，保持程序目录干净（状态显示与定时重启设置存注册表）
-//  版本：1.5.0
+//  版本：1.5.1
 //  作者：Bro.Cui
 //  编译：由 Build-Exe.ps1 调用 Windows 自带的 csc.exe 完成
 // ==================================================================
@@ -27,7 +27,7 @@ namespace CNLC
     internal static class App
     {
         // ---------- 配置常量 ----------
-        internal const string AppVersion = "1.5.0";   // 版本号（仅代码内部使用，不显示在界面）
+        internal const string AppVersion = "1.5.1";   // 版本号（仅代码内部使用，不显示在界面）
         internal const string AppAuthor = "Bro.Cui";  // 作者
         private const string PortalHost = "http://1.1.1.3";
         private const string PortalLoginPage = PortalHost + "/ac_portal/20240318141412/pc.html";
@@ -366,6 +366,9 @@ namespace CNLC
             // 无边框 + 自绘标题条（只有 － 和 ×，无系统 □；最小化悬停提示可自定义）
             loginForm = new Form();
             loginForm.Text = "校园内网登录器（CNLC）";
+            // DPI 采样必须在任何 X() / UiFont() 之前：否则窗体尺寸按旧系数、控件按新系数，
+            // 高 DPI 大屏（希沃一体机）上右侧与底部控件会被画到窗体外面裁掉。
+            try { using (Graphics g = loginForm.CreateGraphics()) uiScale = 1.25F * g.DpiX / 96F; } catch { }
             loginForm.ClientSize = new Size(X(320), X(212));
             loginForm.FormBorderStyle = FormBorderStyle.None;
             loginForm.StartPosition = FormStartPosition.CenterScreen;
@@ -373,7 +376,6 @@ namespace CNLC
             loginForm.ShowInTaskbar = false;   // 纯托盘程序，任务栏不留图标
             loginForm.AutoScaleMode = AutoScaleMode.None;   // 缩放由 X() 统一处理（含 DPI 因子），避免双重缩放
             try { loginForm.Font = UiFont(); } catch { }
-            try { using (Graphics g = loginForm.CreateGraphics()) uiScale = 1.25F * g.DpiX / 96F; } catch { }
             try { loginForm.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
             // ---------- 自绘标题条（仿 Windows 10 原生样式）----------
@@ -699,7 +701,9 @@ namespace CNLC
                     }
                     else if (ok && !online)
                     {
-                        ShowLoginResult("认证已提交，但网络暂未连通，请稍候重试", true);
+                        ShowLoginResult("认证已提交，但未连上外网，正在自动重试", true);
+                        Log("登录后联网复核未通过，转入自动重试 ...");
+                        RunBg(delegate { ReloginLoop(); });
                     }
                     else
                     {
@@ -1626,7 +1630,11 @@ namespace CNLC
                           "&pwd=" + enc + "&auth_tag=" + rckey + "&rememberPwd=0";
             HttpGet(PortalLoginPage, 4);   // 先取会话 cookie（不可达环境快速失败）
             string resp = HttpPost(PortalLoginApi, body, 8, PortalLoginPage);
-            if (resp != null && Regex.IsMatch(resp, "\"success\"\\s*:\\s*true")) return true;
+            if (resp != null && Regex.IsMatch(resp, "\"success\"\\s*:\\s*true"))
+            {
+                Log("登录返回(成功前 300 字): " + resp.Substring(0, Math.Min(300, resp.Length)));
+                return true;
+            }
             if (resp != null)
             {
                 Log("登录返回: " + resp);
@@ -1644,18 +1652,36 @@ namespace CNLC
             return resp != null && Regex.IsMatch(resp, "\"success\"\\s*:\\s*true");
         }
 
+        // 真实联网复核：禁缓存 + 随机参数 + 校验落地域名/状态码，避免认证页或本地缓存
+        // 把「没网」伪装成「能上网」，导致点登录误报成功、守护也不再重连。
         private static bool TestOffline()
         {
             try
             {
-                string s = HttpGet(ProbeUrl, 6);
-                bool ok = s != null && s.Contains("baidu");
-                if (!ok)
-                    Log("联网探测失败" + (s == null ? "（无响应）" :
-                        "（响应前 120 字: " + s.Substring(0, Math.Min(120, s.Length)).Replace("\n", " ").Replace("\r", "") + "）"));
-                return !ok;
+                string url = ProbeUrl + "?_cnlc=" + DateTime.UtcNow.Ticks;
+                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
+                req.Method = "GET";
+                req.Timeout = 6000;
+                req.ReadWriteTimeout = 6000;
+                req.UserAgent = "Mozilla/5.0";
+                req.CachePolicy = new System.Net.Cache.RequestCachePolicy(
+                    System.Net.Cache.RequestCacheLevel.NoCacheNoStore);
+                using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
+                using (StreamReader sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
+                {
+                    string s = sr.ReadToEnd();
+                    string host = resp.ResponseUri != null ? resp.ResponseUri.Host : "";
+                    int code = (int)resp.StatusCode;
+                    bool ok = code >= 200 && code < 400
+                              && host.IndexOf("baidu.com", StringComparison.OrdinalIgnoreCase) >= 0
+                              && s != null && s.Contains("baidu");
+                    if (!ok)
+                        Log("联网探测失败（状态 " + code + " / 落地 " + host + " / 响应前 80 字: " +
+                            (s == null ? "无响应" : s.Substring(0, Math.Min(80, s.Length)).Replace("\n", " ").Replace("\r", "")) + "）");
+                    return !ok;
+                }
             }
-            catch { return true; }
+            catch (Exception ex) { Log("联网探测失败（" + ex.Message + "）"); return true; }
         }
 
         // ================= 状态 / 凭据 / 自启动 =================
