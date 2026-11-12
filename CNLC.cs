@@ -7,7 +7,7 @@
 //        开机自登录(自启动+静默) / 雨课堂网页版快捷入口 / 注销 / 状态窗口 /
 //        定时重启电脑（程序常驻自计时 + 到点重启 + 倒计时提示，默认每日 00:00）
 //  说明：不生成日志与状态文件，保持程序目录干净（状态显示与定时重启设置存注册表）
-//  版本：1.5.1
+//  版本：1.5.2
 //  作者：Bro.Cui
 //  编译：由 Build-Exe.ps1 调用 Windows 自带的 csc.exe 完成
 // ==================================================================
@@ -27,7 +27,7 @@ namespace CNLC
     internal static class App
     {
         // ---------- 配置常量 ----------
-        internal const string AppVersion = "1.5.1";   // 版本号（仅代码内部使用，不显示在界面）
+        internal const string AppVersion = "1.5.2";   // 版本号（仅代码内部使用，不显示在界面）
         internal const string AppAuthor = "Bro.Cui";  // 作者
         private const string PortalHost = "http://1.1.1.3";
         private const string PortalLoginPage = PortalHost + "/ac_portal/20240318141412/pc.html";
@@ -361,6 +361,21 @@ namespace CNLC
             titlePanel.Invalidate();
         }
 
+        // CenterScreen 在高 DPI 虚拟化 / 多屏（希沃大屏常被识别为副屏）下会算偏：
+        // 窗口显示后按所在屏幕工作区与窗体实际宽高重算一次位置。
+        private static void CenterOnScreen(Form f)
+        {
+            try
+            {
+                Screen sc = Screen.FromControl(f);
+                Rectangle wa = sc.WorkingArea;
+                f.Location = new Point(
+                    wa.Left + (wa.Width - f.Width) / 2,
+                    wa.Top + (wa.Height - f.Height) / 2);
+            }
+            catch { }
+        }
+
         private static void BuildLoginForm()
         {
             // 无边框 + 自绘标题条（只有 － 和 ×，无系统 □；最小化悬停提示可自定义）
@@ -462,6 +477,7 @@ namespace CNLC
                 e.Graphics.DrawRectangle(new Pen(Color.FromArgb(204, 204, 204)),
                     0, 0, loginForm.ClientSize.Width - 1, loginForm.ClientSize.Height - 1);
             };
+            loginForm.Shown += delegate { CenterOnScreen(loginForm); };
 
             // 悬停提示
             ToolTip tip = new ToolTip();
@@ -1037,6 +1053,7 @@ namespace CNLC
             statusForm.ClientSize = new Size(X(300), X(158));
             statusForm.FormBorderStyle = FormBorderStyle.None;   // 无边框：无 - 口 X，也不放确定按钮
             statusForm.StartPosition = FormStartPosition.CenterScreen;
+            statusForm.Shown += delegate { CenterOnScreen(statusForm); };
             statusForm.TopMost = true;
             statusForm.BackColor = Color.White;
             statusForm.AutoScaleMode = AutoScaleMode.None;
@@ -1224,6 +1241,8 @@ namespace CNLC
                 }
                 catch { }
             };
+            // Shown 里会按正文实际高度调整窗体尺寸，居中必须排在它后面才准
+            aboutForm.Shown += delegate { CenterOnScreen(aboutForm); };
 
             // 点击窗口内任意处或按任意键关闭（"检查更新"按钮除外——点了它要等结果）
             aboutForm.KeyPreview = true;
