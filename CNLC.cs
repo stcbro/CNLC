@@ -7,7 +7,7 @@
 //        开机自登录(自启动+静默) / 雨课堂网页版快捷入口 / 注销 / 状态窗口 /
 //        定时重启电脑（程序常驻自计时 + 到点重启 + 倒计时提示，默认每日 00:00）
 //  说明：不生成日志与状态文件，保持程序目录干净（状态显示与定时重启设置存注册表）
-//  版本：1.5.2
+//  版本：1.5.3
 //  作者：Bro.Cui
 //  编译：由 Build-Exe.ps1 调用 Windows 自带的 csc.exe 完成
 // ==================================================================
@@ -27,7 +27,7 @@ namespace CNLC
     internal static class App
     {
         // ---------- 配置常量 ----------
-        internal const string AppVersion = "1.5.2";   // 版本号（仅代码内部使用，不显示在界面）
+        internal const string AppVersion = "1.5.3";   // 版本号（仅代码内部使用，不显示在界面）
         internal const string AppAuthor = "Bro.Cui";  // 作者
         private const string PortalHost = "http://1.1.1.3";
         private const string PortalLoginPage = PortalHost + "/ac_portal/20240318141412/pc.html";
@@ -72,6 +72,9 @@ namespace CNLC
         private static float uiScale = 1.25F;
         private static int X(int v) { return (int)Math.Round(v * uiScale); }
         private static Font UiFont() { return new Font(Control.DefaultFont.FontFamily, Control.DefaultFont.Size * uiScale); }
+        // 一级/二级托盘菜单共用同一个 Font 对象，避免各自 new 出来的字号在高 DPI 下不一致
+        private static Font menuBaseFont = null;
+        private static Font MenuFont() { return menuBaseFont ?? (menuBaseFont = UiFont()); }
 
         // 日志开关：
         //   测试版（编译时 /define:DIAG，文件名 CNLC-Test.exe）：始终写日志与状态文件，作者手持排查用
@@ -388,7 +391,7 @@ namespace CNLC
             loginForm.FormBorderStyle = FormBorderStyle.None;
             loginForm.StartPosition = FormStartPosition.CenterScreen;
             loginForm.TopMost = true;
-            loginForm.ShowInTaskbar = false;   // 纯托盘程序，任务栏不留图标
+            loginForm.ShowInTaskbar = true;    // 「最小化到任务栏」必须在任务栏看得到图标
             loginForm.AutoScaleMode = AutoScaleMode.None;   // 缩放由 X() 统一处理（含 DPI 因子），避免双重缩放
             try { loginForm.Font = UiFont(); } catch { }
             try { loginForm.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
@@ -427,13 +430,14 @@ namespace CNLC
             titlePanel.Controls.Add(titleLabel);
 
             // 最小化按钮：贴右上，图标为画的水平细线（仿系统）
+            // 功能＝标准「最小化到任务栏」（只缩到任务栏，不隐藏窗口、不进托盘）
             minBtn = new Label();
             minBtn.Size = new Size(X(46), X(32));
             minBtn.Location = new Point(loginForm.ClientSize.Width - X(92), 0);
             minBtn.ForeColor = Color.FromArgb(60, 60, 60);
             minBtn.BackColor = TitleBarBack;
             minBtn.Cursor = Cursors.Hand;
-            minBtn.Click += delegate { EnsureTray(); loginForm.Hide(); };
+            minBtn.Click += delegate { loginForm.WindowState = FormWindowState.Minimized; };
             minBtn.MouseEnter += delegate { minBtn.BackColor = Color.FromArgb(226, 226, 226); };
             minBtn.MouseLeave += delegate { ApplyTitleStyle(); };
             minBtn.Paint += delegate(object s, PaintEventArgs e)
@@ -446,14 +450,15 @@ namespace CNLC
             };
             titlePanel.Controls.Add(minBtn);
 
-            // 关闭按钮：hover 红底白线（仿系统）
+            // 右上角 ×：功能已改为「最小化到托盘」，不再关闭程序。
+            // 系统级关闭（Alt+F4 / 任务栏右键关闭窗口）仍走 FormClosed → ExitApp，保留直接退出。
             closeBtn = new Label();
             closeBtn.Size = new Size(X(46), X(32));
             closeBtn.Location = new Point(loginForm.ClientSize.Width - X(46), 0);
             closeBtn.ForeColor = Color.FromArgb(60, 60, 60);
             closeBtn.BackColor = TitleBarBack;
             closeBtn.Cursor = Cursors.Hand;
-            closeBtn.Click += delegate { loginForm.Close(); };
+            closeBtn.Click += delegate { EnsureTray(); loginForm.Hide(); };
             closeBtn.MouseEnter += delegate { closeBtn.BackColor = Color.FromArgb(232, 17, 35); closeBtn.ForeColor = Color.White; };
             closeBtn.MouseLeave += delegate { ApplyTitleStyle(); };
             closeBtn.Paint += delegate(object s, PaintEventArgs e)
@@ -481,8 +486,8 @@ namespace CNLC
 
             // 悬停提示
             ToolTip tip = new ToolTip();
-            tip.SetToolTip(minBtn, "最小化到托盘");
-            tip.SetToolTip(closeBtn, "退出程序");
+            tip.SetToolTip(minBtn, "最小化到任务栏");
+            tip.SetToolTip(closeBtn, "最小化到托盘");
             tip.SetToolTip(titleLabel, "按住可拖动窗口");
 
             // 按住标题条拖动窗口
@@ -790,11 +795,17 @@ namespace CNLC
             tray.Visible = true;
 
             ContextMenuStrip menu = new ContextMenuStrip();
-            try { menu.Font = UiFont(); } catch { }
+            Font menuFont = MenuFont();
+            try { menu.Font = menuFont; } catch { }
             ToolStripMenuItem miShow = new ToolStripMenuItem("显示主界面");
-            miShow.Font = new Font(miShow.Font, FontStyle.Bold);
+            // 必须基于菜单统一字体加粗：item 刚创建、尚未加入菜单时 miShow.Font 取的是系统
+            // 默认菜单字（约 9pt），直接用它会让这一项比其它项小一号，高 DPI 大屏更明显。
+            miShow.Font = new Font(menuFont, FontStyle.Bold);
             miShow.Click += delegate
             {
+                // 从「最小化到任务栏」状态恢复：Show() 不会把 Minimized 变回 Normal
+                if (loginForm.WindowState == FormWindowState.Minimized)
+                    loginForm.WindowState = FormWindowState.Normal;
                 loginForm.Show();
                 loginForm.Activate();
             };
@@ -1908,8 +1919,9 @@ namespace CNLC
             miRestartEnable.Click += delegate { SetRestartEnabled(!miRestartEnable.Checked); };
 
             // 状态行用 ToolStripLabel：不可点击，但文字保持正常黑色（禁用菜单项会被系统染灰）
+            // 不要额外左缩进：下拉本身已预留勾选区，文字自然与「启用」对齐，
+            // 多给的 26px 只会把整层菜单撑宽、显得空。
             miRestartState = new ToolStripLabel();
-            miRestartState.Padding = new Padding(26, 0, 0, 0);
 
             // 托盘下拉菜单里的 ToolStripTextBox 拿不稳输入焦点（输入常被菜单吞掉，读到的还是旧值），
             // 改为点「自定义」弹出独立小窗口输入；设定时间直接回显在这个菜单项上。
@@ -1919,30 +1931,48 @@ namespace CNLC
             miRestartCancel.Click += delegate { CancelPendingRestart(); };
             miRestartCancelSep = new ToolStripSeparator();
 
-            // 与一级菜单同字号（不放大、不加粗），避免子菜单文字过大
-            try
-            {
-                Font ui = UiFont();
-                miRestartEnable.Font = ui;
-                miRestartState.Font = ui;
-                miRestartApply.Font = ui;
-                miRestartCancel.Font = ui;
-            }
-            catch { }
-
             root.DropDownItems.Add(miRestartEnable);
             root.DropDownItems.Add(miRestartState);
             root.DropDownItems.Add(new ToolStripSeparator());
             root.DropDownItems.Add(miRestartApply);
             root.DropDownItems.Add(miRestartCancelSep);
             root.DropDownItems.Add(miRestartCancel);
+            // 与一级菜单同字号（不放大、不加粗）；共用 MenuFont() 的同一个 Font 对象
+            ApplyMenuFont(root);
             root.DropDownOpening += delegate
             {
+                // ToolStripItem.Font 是环境属性，菜单项挂到父菜单后会被父级重新解析，
+                // 每次展开前再刷一遍，保证显示出来时二级菜单字号与一级一致。
+                ApplyMenuFont(root);
                 // 启用态、设定时间、倒计时状态都来自本地，瞬时读取，无需后台线程
                 ApplyRestartMenuState(ReadRestartEnabled(), ReadRestartTime());
             };
             ApplyRestartMenuState(ReadRestartEnabled(), ReadRestartTime());
             return root;
+        }
+
+        // 统一「定时重启电脑」二级菜单字号：root、下拉容器、每个子项分别独立赋值。
+        // 必须逐项 try：下拉尚未挂载时 DropDown.Font 可能抛异常；以前几项共用一个 try，
+        // 那一句一失败，后面四项赋值全被跳过，整层下拉就回退成系统默认小字。
+        private static void ApplyMenuFont(ToolStripMenuItem root)
+        {
+            Font f = MenuFont();
+            try { root.Font = f; } catch { }
+            try { root.DropDown.Font = f; } catch { }
+            foreach (ToolStripItem it in root.DropDownItems)
+            {
+                try { it.Font = f; } catch { }
+            }
+#if DIAG
+            try
+            {
+                Font p = root.Owner != null ? root.Owner.Font : null;
+                Log("菜单字号: 一级 " + (p == null ? "?" : p.Size.ToString("0.##"))
+                    + "pt / 下拉 " + root.DropDown.Font.Size.ToString("0.##")
+                    + "pt / 启用项 " + miRestartEnable.Font.Size.ToString("0.##") + "pt");
+            }
+            catch { }
+#endif
         }
 
         private static void ApplyRestartMenuState(bool on, string hhmm)
@@ -1955,9 +1985,9 @@ namespace CNLC
             // 状态行只说还剩多久；当前设定时间看「自定义（HH:MM）」菜单项
             if (!on) miRestartState.Text = "未启用";
             else if (string.Equals(ReadRestartLastDate(), TodayStr()))
-                miRestartState.Text = "今日已跳过 · 下次明天 " + restartTime;
+                miRestartState.Text = "今日已跳过·下次明天" + restartTime;
             else
-                miRestartState.Text = "距重启 " + RemainingText(restartTime);
+                miRestartState.Text = "距重启" + RemainingText(restartTime);
             // 设定时间回显在「自定义（HH:MM）」上（输入框已改为弹窗）
             if (miRestartApply != null) miRestartApply.Text = "自定义（" + restartTime + "）";
             SetRestartPending(restartPending);   // 菜单每次展开时同步「取消重启」的显示状态
@@ -1979,7 +2009,8 @@ namespace CNLC
             int diff = targetMin - nowMin;
             if (diff < 0) diff += 24 * 60;
             int h = diff / 60, m = diff % 60;
-            return h > 0 ? h + " 小时 " + m + " 分钟" : m + " 分钟";
+            // 数字与单位之间不留空格：托盘下拉宽度跟着最宽一行自动撑，文字紧凑界面才跟着收紧
+            return h > 0 ? h + "小时" + m + "分钟" : m + "分钟";
         }
 
         // 轻量提示浮窗：置顶、非模态（不阻塞 UI）、自动关闭，必定可见；
@@ -1999,12 +2030,15 @@ namespace CNLC
                 lb.Text = text;
                 lb.Dock = DockStyle.Fill;
                 lb.TextAlign = ContentAlignment.MiddleCenter;
-                lb.Padding = new Padding(X(14));
+                lb.Padding = Padding.Empty;   // 留白统一由窗口尺寸给，别在 Label 里再叠一层
                 try { lb.Font = new Font(f.Font.FontFamily, f.Font.Size * 1.3F, FontStyle.Bold); } catch { }
-                // 按实际文字宽度撑开浮窗，保证提示始终只占一行（左右各留白）
-                int textW = 0;
-                try { textW = TextRenderer.MeasureText(text, lb.Font).Width; } catch { }
-                f.ClientSize = new Size(Math.Max(X(400), textW + X(48)), X(112));
+                // 宽、高都按提示文字实测值算：去掉 400px 下限和写死的 112 高度，
+                // 短提示就是贴着文字的一行小浮窗，长提示仍保证不换行。
+                Size ts;
+                try { ts = TextRenderer.MeasureText(text, lb.Font); }
+                catch { ts = new Size(X(240), X(32)); }
+                int padX = X(20), padY = X(12);
+                f.ClientSize = new Size(ts.Width + padX * 2, ts.Height + padY * 2);
                 f.Controls.Add(lb);
                 f.Click += delegate(object s, EventArgs e) { try { f.Close(); } catch { } };
                 f.KeyPreview = true;
@@ -2056,9 +2090,10 @@ namespace CNLC
         // 设置类浮窗统一文案；当天已跳过时不能再说「还有 X 小时」，否则又变成显示骗人
         private static string RestartToastText(string prefix, string hhmm)
         {
+            // 文案不留空格：浮窗窗口按文字实测尺寸自适应，空格只会把窗口白撑大
             if (string.Equals(ReadRestartLastDate(), TodayStr()))
-                return prefix + " · 每日 " + hhmm + " 重启 · 今日已跳过，明天生效";
-            return prefix + " · 每日 " + hhmm + " 重启 · 还有 " + RemainingText(hhmm);
+                return prefix + "·每日" + hhmm + "重启·今日已跳过，明天生效";
+            return prefix + "·每日" + hhmm + "重启·还有" + RemainingText(hhmm);
         }
 
         // 启用/关闭只写注册表（纯本地、瞬时、不碰任何外部进程），菜单点击在 UI 线程同步完成即可。
@@ -2070,7 +2105,7 @@ namespace CNLC
             Log("定时重启" + (on ? "已启用：每日 " : "已关闭：") + ReadRestartTime());
             ShowToast(on
                 ? RestartToastText("已启用", ReadRestartTime())
-                : "已关闭每日定时重启。", false);
+                : "定时重启电脑·已关闭", false);
         }
 
         // 自定义时间：独立小窗口输入。托盘下拉菜单里的 ToolStripTextBox 拿不稳输入焦点，
